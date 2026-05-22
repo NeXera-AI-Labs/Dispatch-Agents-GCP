@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Package } from 'lucide-react';
-import { getDelivery, getDeliveryItems } from '@/lib/api';
+import { getDelivery, getDeliveryItems, listWarehouses } from '@/lib/api';
 import { DeliveryMap } from '@/components/delivery-map';
-import type { Delivery, DeliveryItem } from '@/lib/types';
+import type { Delivery, DeliveryItem, Warehouse } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
 import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
 import { DriverAssignForm } from '@/components/driver-assign-form';
@@ -25,6 +25,7 @@ export default function DeliveryDetailPage() {
   const router = useRouter();
   const deliveryId = params?.deliveryId as string;
   const [warehouseNumber, setWarehouseNumber] = useState<string | undefined>(undefined);
+  const [warehouseAddress, setWarehouseAddress] = useState<string | undefined>(undefined);
 
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [items, setItems] = useState<DeliveryItem[]>([]);
@@ -38,7 +39,20 @@ export default function DeliveryDetailPage() {
     // SSR-safe: read user from localStorage only on client
     const { getCurrentUser } = require('@/lib/auth');
     const user = getCurrentUser();
-    setWarehouseNumber(user?.warehouse_numbers?.[0]);
+    const wh = user?.warehouse_numbers?.[0];
+    setWarehouseNumber(wh);
+    // Fetch warehouse address for use as map origin
+    if (wh) {
+      listWarehouses()
+        .then((warehouses: Warehouse[]) => {
+          const match = warehouses.find((w: Warehouse) => w.warehouse_number === wh);
+          if (match) {
+            const addr = [match.physical_address, match.city, match.country].filter(Boolean).join(', ');
+            if (addr) setWarehouseAddress(addr);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -125,9 +139,9 @@ export default function DeliveryDetailPage() {
 
         {delivery && (
           <DeliveryMap
-            shippingPoint={delivery.ShippingPoint}
             shipToParty={delivery.ShipToParty}
             assignmentId={assignmentId || undefined}
+            warehouseAddress={warehouseAddress}
           />
         )}
       </main>

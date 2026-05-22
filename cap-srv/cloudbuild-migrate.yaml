@@ -1,0 +1,11 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    - 'build'
+    - '-f'
+    - 'Dockerfile.migrate'
+    - '-t'
+    - 'us-central1-docker.pkg.dev/agentic-dispatch/cloud-run-source-deploy/cap-srv-migrate:latest'
+    - '.'
+images:
+  - 'us-central1-docker.pkg.dev/agentic-dispatch/cloud-run-source-deploy/cap-srv-migrate:latest'

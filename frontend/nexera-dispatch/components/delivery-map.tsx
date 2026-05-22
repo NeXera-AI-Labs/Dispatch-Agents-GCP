@@ -4,23 +4,49 @@ import { ChevronDown, ChevronUp, Navigation } from 'lucide-react';
 import { getDirections, getAssignment } from '@/lib/api';
 import type { RouteDirections, DriverAssignment } from '@/lib/types';
 
+// Module-level promise — one load per page lifecycle, survives Strict Mode
+let gmapsPromise: Promise<void> | null = null;
+
+function loadGoogleMaps(key: string): Promise<void> {
+  if (gmapsPromise) return gmapsPromise;
+  gmapsPromise = new Promise((resolve, reject) => {
+    // If already loaded (e.g. navigated back), resolve immediately
+    if (window.google?.maps) { resolve(); return; }
+
+    // Remove ALL stale Maps script tags (from hot-reload iterations)
+    document.querySelectorAll('script[src*="maps.googleapis.com"]').forEach(s => s.remove());
+
+    const callbackName = '__gmapsInit' + Date.now();
+    (window as Record<string, unknown>)[callbackName] = () => {
+      delete (window as Record<string, unknown>)[callbackName];
+      resolve();
+    };
+
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=geometry&callback=${callbackName}&loading=async`;
+    script.async = true;
+    script.onerror = () => { gmapsPromise = null; reject(new Error('Maps load failed')); };
+    document.head.appendChild(script);
+  });
+  return gmapsPromise;
+}
+
 interface DeliveryMapProps {
-  shippingPoint?: string;
   shipToParty?: string;
   assignmentId?: string;
+  warehouseAddress?: string;
 }
 
 declare global {
-  interface Window {
-    google: typeof google;
-    initGoogleMap: () => void;
-  }
+  interface Window { google: typeof google; }
 }
 
-export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: DeliveryMapProps) {
+export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: DeliveryMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
+  const routeDrawnRef = useRef(false);
   const [route, setRoute] = useState<RouteDirections | null>(null);
   const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
   const [directionsOpen, setDirectionsOpen] = useState(false);
@@ -28,31 +54,25 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
   const [error, setError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load Google Maps script once
+  // Load Google Maps
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
     if (!key) { setError(true); return; }
-    if (window.google?.maps) { setMapReady(true); return; }
-
-    window.initGoogleMap = () => setMapReady(true);
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=geometry&callback=initGoogleMap`;
-    script.async = true;
-    script.onerror = () => setError(true);
-    document.head.appendChild(script);
-    return () => {
-      delete window.initGoogleMap;
-      if (!window.google?.maps) script.remove();
-    };
+    let cancelled = false;
+    loadGoogleMaps(key)
+      .then(() => { if (!cancelled) setMapReady(true); })
+      .catch(() => { if (!cancelled) setError(true); });
+    return () => { cancelled = true; };
   }, []);
 
-  // Fetch route directions from cap-srv
+  // Fetch route directions — cap-srv resolves SAP codes to real addresses
   useEffect(() => {
-    if (!shippingPoint || !shipToParty) return;
-    getDirections(shippingPoint, shipToParty)
+    const origin = warehouseAddress || 'Hamburg, Germany';
+    if (!shipToParty) return;
+    getDirections(origin, shipToParty)
       .then(setRoute)
-      .catch(() => setError(true));
-  }, [shippingPoint, shipToParty]);
+      .catch(() => {});
+  }, [shipToParty, warehouseAddress]);
 
   // Poll driver assignment every 30s
   const fetchAssignment = useCallback(() => {
@@ -67,19 +87,13 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [assignmentId, fetchAssignment]);
 
-  // Initialize map once Google Maps and route are both ready
+  // Initialize map once Google Maps is ready
   useEffect(() => {
-    if (!mapReady || !route || !mapRef.current) return;
-    if (mapInstanceRef.current) return; // prevent double init (React Strict Mode)
-
-    const bounds = new window.google.maps.LatLngBounds(
-      { lat: route.bounds_southwest_lat, lng: route.bounds_southwest_lng },
-      { lat: route.bounds_northeast_lat, lng: route.bounds_northeast_lng }
-    );
-
-    const map = new window.google.maps.Map(mapRef.current, {
+    if (!mapReady || !mapRef.current || mapInstanceRef.current) return;
+    mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
       mapTypeId: 'roadmap',
-      disableDefaultUI: false,
+      zoom: 5,
+      center: { lat: 51.1657, lng: 10.4515 },
       zoomControl: true,
       styles: [
         { elementType: 'geometry', stylers: [{ color: '#1d2c3f' }] },
@@ -89,49 +103,48 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
         { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1f33' }] },
       ],
     });
-    map.fitBounds(bounds);
-    mapInstanceRef.current = map;
+  }, [mapReady]);
 
-    // Draw route polyline from rawData
+  // Draw route once map and route are both ready
+  useEffect(() => {
+    if (!mapInstanceRef.current || !route || routeDrawnRef.current) return;
+    routeDrawnRef.current = true;
+    const map = mapInstanceRef.current;
+
+    map.fitBounds(new window.google.maps.LatLngBounds(
+      { lat: route.bounds_southwest_lat, lng: route.bounds_southwest_lng },
+      { lat: route.bounds_northeast_lat, lng: route.bounds_northeast_lng }
+    ));
+
     try {
       const raw = JSON.parse(route.rawData);
       const encoded = raw.routes?.[0]?.overview_polyline?.points;
-      if (encoded) {
+      if (encoded && window.google.maps.geometry) {
         new window.google.maps.Polyline({
-          path: window.google.maps.geometry
-            ? window.google.maps.geometry.encoding.decodePath(encoded)
-            : route.steps.map(s => ({ lat: s.startLat, lng: s.startLng })),
-          geodesic: true,
-          strokeColor: '#6366f1',
-          strokeOpacity: 0.9,
-          strokeWeight: 4,
-          map,
+          path: window.google.maps.geometry.encoding.decodePath(encoded),
+          geodesic: true, strokeColor: '#6366f1', strokeOpacity: 0.9, strokeWeight: 4, map,
         });
       }
-    } catch { /* fallback: no polyline */ }
+    } catch { /* no polyline */ }
 
-    // Origin marker
     if (route.steps.length > 0) {
       new window.google.maps.Marker({
         position: { lat: route.steps[0].startLat, lng: route.steps[0].startLng },
-        map,
-        title: 'Origin',
+        map, title: 'Origin',
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#4ade80', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
       });
     }
-    // Destination marker
     const last = route.steps[route.steps.length - 1];
     if (last) {
       new window.google.maps.Marker({
         position: { lat: last.endLat, lng: last.endLng },
-        map,
-        title: 'Destination',
+        map, title: 'Destination',
         icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#f43f5e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
       });
     }
   }, [mapReady, route]);
 
-  // Update driver pin when assignment GPS changes
+  // Update driver pin
   useEffect(() => {
     if (!mapInstanceRef.current || !assignment?.CurrentLat || !assignment?.CurrentLng) return;
     const pos = { lat: assignment.CurrentLat, lng: assignment.CurrentLng };
@@ -139,8 +152,7 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
       markerRef.current.setPosition(pos);
     } else {
       markerRef.current = new window.google.maps.Marker({
-        position: pos,
-        map: mapInstanceRef.current,
+        position: pos, map: mapInstanceRef.current,
         title: assignment.DriverName || 'Driver',
         icon: { url: 'https://maps.google.com/mapfiles/ms/icons/truck.png', scaledSize: new window.google.maps.Size(32, 32) },
       });
@@ -153,20 +165,15 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
     DELIVERED: 'bg-green-500/20 text-green-300 border-green-500/30',
   };
 
-  if (error || (!shippingPoint && !shipToParty)) return null;
+  if (error) return null;
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <Navigation size={14} className="text-indigo-400" />
           <span className="text-sm font-semibold text-foreground">Route Map</span>
-          {route && (
-            <span className="text-xs text-muted-foreground ml-2">
-              {route.distance} · {route.duration}
-            </span>
-          )}
+          {route && <span className="text-xs text-muted-foreground ml-2">{route.distance} · {route.duration}</span>}
         </div>
         {assignment && (
           <div className="flex items-center gap-2">
@@ -182,7 +189,6 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
         )}
       </div>
 
-      {/* Map */}
       <div ref={mapRef} className="w-full" style={{ height: 320 }}>
         {!mapReady && (
           <div className="w-full h-full flex items-center justify-center bg-slate-900">
@@ -191,7 +197,6 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
         )}
       </div>
 
-      {/* Directions toggle */}
       {route && route.steps.length > 0 && (
         <div className="border-t border-border">
           <button

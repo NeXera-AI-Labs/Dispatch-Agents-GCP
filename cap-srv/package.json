@@ -1,0 +1,138 @@
+{
+  "name": "gmaps-app",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "dependencies": {
+    "@cap-js/postgres": "^1",
+    "@sap-cloud-sdk/http-client": "^4.4.0",
+    "@sap-cloud-sdk/resilience": "^4.4.0",
+    "@sap/cds": "^9",
+    "@sap/cds-common-content": "^3.1.0",
+    "axios": "^1",
+    "express": "^4",
+    "qrcode": "^1",
+    "uuid": "^11"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^2",
+    "@playwright/test": "^1.59.1",
+    "@sap/cds-dk": "^9",
+    "cds-plugin-ui5": "^0.13.0",
+    "mbt": "^1.2.29",
+    "rimraf": "^5.0.5"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "watch-routes": "cds watch --open routes.routes/index.html?sap-ui-xx-viewCache=false --livereload false",
+    "undeploy": "cf undeploy gmaps-app --delete-services --delete-service-keys --delete-service-brokers",
+    "build": "rimraf resources mta_archives && mbt build --mtar archive",
+    "deploy": "cf deploy mta_archives/archive.mtar --retries 1"
+  },
+  "private": true,
+  "workspaces": [
+    "app/*"
+  ],
+  "cds": {
+    "features": {
+      "locale_fallback": true
+    },
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "database": "db.sqlite"
+        }
+      },
+      "auth": {
+        "kind": "dummy"
+      },
+      "GoogleAPI-SR": {
+        "kind": "rest",
+        "credentials": {
+          "url": "https://maps.googleapis.com"
+        }
+      },
+      "EWM-API": {
+        "kind": "rest",
+        "credentials": {
+          "url": "https://sandbox.api.sap.com"
+        }
+      },
+      "BP-API": {
+        "kind": "rest",
+        "credentials": {
+          "url": "https://sandbox.api.sap.com"
+        }
+      },
+      "[hybrid]": {
+        "db": {
+          "kind": "hana"
+        },
+        "auth": {
+          "kind": "mocked",
+          "users": {
+            "alice": {
+              "roles": [
+                "gmaps_user",
+                "Transport_Admin"
+              ]
+            }
+          }
+        },
+        "GoogleAPI-SR": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://maps.googleapis.com"
+          }
+        },
+        "EWM-API": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://sandbox.api.sap.com"
+          }
+        },
+        "BP-API": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://sandbox.api.sap.com"
+          }
+        }
+      },
+      "[production]": {
+        "db": {
+          "kind": "postgres",
+          "credentials": {
+            "host": "/cloudsql/agentic-dispatch:us-central1:nexera-sbx-db",
+            "user": "dispatch-user",
+            "database": "dispatch"
+          }
+        },
+        "GoogleAPI-SR": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://maps.googleapis.com"
+          }
+        },
+        "EWM-API": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://sandbox.api.sap.com"
+          }
+        },
+        "BP-API": {
+          "kind": "rest",
+          "credentials": {
+            "url": "https://sandbox.api.sap.com"
+          }
+        },
+        "auth": {
+          "kind": "dummy"
+        }
+      }
+    }
+  },
+  "sapux": [
+    "app/routes",
+    "app/deliveries"
+  ]
+}
