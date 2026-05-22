@@ -36,11 +36,14 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
 
     window.initGoogleMap = () => setMapReady(true);
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initGoogleMap`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=geometry&callback=initGoogleMap`;
     script.async = true;
     script.onerror = () => setError(true);
     document.head.appendChild(script);
-    return () => { delete window.initGoogleMap; };
+    return () => {
+      delete window.initGoogleMap;
+      if (!window.google?.maps) script.remove();
+    };
   }, []);
 
   // Fetch route directions from cap-srv
@@ -67,6 +70,7 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
   // Initialize map once Google Maps and route are both ready
   useEffect(() => {
     if (!mapReady || !route || !mapRef.current) return;
+    if (mapInstanceRef.current) return; // prevent double init (React Strict Mode)
 
     const bounds = new window.google.maps.LatLngBounds(
       { lat: route.bounds_southwest_lat, lng: route.bounds_southwest_lng },
@@ -167,7 +171,7 @@ export function DeliveryMap({ shippingPoint, shipToParty, assignmentId }: Delive
         {assignment && (
           <div className="flex items-center gap-2">
             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusColor[assignment.Status] ?? statusColor.ASSIGNED}`}>
-              {assignment.Status.replace('_', ' ')}
+              {assignment.Status.replaceAll('_', ' ')}
             </span>
             {assignment.LastGpsAt && (
               <span className="text-xs text-muted-foreground">
