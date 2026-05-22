@@ -1,0 +1,136 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Package } from 'lucide-react';
+import { getDelivery, getDeliveryItems } from '@/lib/api';
+import { DeliveryMap } from '@/components/delivery-map';
+import type { Delivery, DeliveryItem } from '@/lib/types';
+import { Navbar } from '@/components/navbar';
+import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
+import { DriverAssignForm } from '@/components/driver-assign-form';
+import { QrDisplay } from '@/components/qr-display';
+import { getDeliveryStatus } from '@/components/delivery-table';
+
+function DetailRow({ label, value }: { label: string; value?: string | number }) {
+  return (
+    <div className="flex justify-between py-2 border-b border-border/50 last:border-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-foreground font-medium">{value ?? '—'}</span>
+    </div>
+  );
+}
+
+export default function DeliveryDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const deliveryId = params?.deliveryId as string;
+  const [warehouseNumber, setWarehouseNumber] = useState<string | undefined>(undefined);
+
+  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [items, setItems] = useState<DeliveryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [qrImage, setQrImage] = useState('');
+  const [qrUrl, setQrUrl] = useState('');
+  const [assignmentId, setAssignmentId] = useState('');
+
+  useEffect(() => {
+    // SSR-safe: read user from localStorage only on client
+    const { getCurrentUser } = require('@/lib/auth');
+    const user = getCurrentUser();
+    setWarehouseNumber(user?.warehouse_numbers?.[0]);
+  }, []);
+
+  useEffect(() => {
+    if (!deliveryId) return;
+    // Fetch delivery and items independently — items failure won't block delivery display
+    getDelivery(deliveryId)
+      .then(setDelivery)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+    getDeliveryItems(deliveryId)
+      .then(setItems)
+      .catch(() => setItems([])); // items are optional — silently ignore failure
+  }, [deliveryId]);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar warehouseNumber={warehouseNumber} />
+      <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        {/* Back + title */}
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-foreground font-mono">{deliveryId}</h1>
+            <p className="text-xs text-muted-foreground">Delivery Document</p>
+          </div>
+        </div>
+
+        {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {error && <p className="text-sm text-red-400">Error: {error}</p>}
+
+        {delivery && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Left: delivery info */}
+            <div className="space-y-4">
+              <div className="bg-card border border-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-foreground">Delivery Details</h2>
+                  <DeliveryStatusBadge status={getDeliveryStatus(delivery)} />
+                </div>
+                <DetailRow label="Ship-To Party" value={delivery.ShipToParty} />
+                <DetailRow label="Shipping Point" value={delivery.ShippingPoint} />
+                <DetailRow label="Route" value={delivery.ActualDeliveryRoute} />
+                <DetailRow label="Delivery Date" value={delivery.DeliveryDate ? new Date(delivery.DeliveryDate).toLocaleDateString() : undefined} />
+                <DetailRow label="Gross Weight" value={delivery.HeaderGrossWeight !== undefined ? `${delivery.HeaderGrossWeight} kg` : undefined} />
+                <DetailRow label="Sales Org" value={delivery.SalesOrganization} />
+                {delivery.driver_name && <DetailRow label="Driver" value={delivery.driver_name} />}
+                {delivery.driver_mobile && <DetailRow label="Driver Mobile" value={delivery.driver_mobile} />}
+              </div>
+
+              {/* Items */}
+              {items.length > 0 && (
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Package size={14} className="text-indigo-400" />
+                    Items ({items.length})
+                  </h2>
+                  <div className="space-y-2">
+                    {items.map(item => (
+                      <div key={item.DeliveryDocumentItem} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{item.DeliveryDocumentItem} — {item.Material ?? '—'}</span>
+                        <span className="text-foreground font-medium">{item.ActualDeliveryQuantity} {item.DeliveryQuantityUnit}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right: driver assign or QR */}
+            <div className="bg-card border border-border rounded-xl p-5">
+              {qrImage ? (
+                <QrDisplay qrImage={qrImage} qrUrl={qrUrl} />
+              ) : (
+                <DriverAssignForm
+                  deliveryDoc={deliveryId}
+                  onAssigned={(img, url, id) => { setQrImage(img); setQrUrl(url); if (id) setAssignmentId(id); }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {delivery && (
+          <DeliveryMap
+            shippingPoint={delivery.ShippingPoint}
+            shipToParty={delivery.ShipToParty}
+            assignmentId={assignmentId || undefined}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
