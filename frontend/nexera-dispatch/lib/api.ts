@@ -106,6 +106,10 @@ export const getDirections = (from: string, to: string) =>
 export const getAssignment = (assignmentId: string) =>
   capGet<DriverAssignment>(`/odata/v4/tracking/getAssignment(assignmentId='${assignmentId}')`);
 
+export const listAssignments = () =>
+  capGet<{ value: DriverAssignment[] }>(`/odata/v4/tracking/DriverAssignment?$top=200`)
+    .then(r => r.value ?? []);
+
 // ── Warehouses ────────────────────────────────────────────────────────
 
 export const listWarehouses = () =>

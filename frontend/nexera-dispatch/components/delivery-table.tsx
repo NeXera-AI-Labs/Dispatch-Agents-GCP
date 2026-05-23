@@ -1,16 +1,26 @@
 'use client';
 import Link from 'next/link';
-import type { Delivery } from '@/lib/types';
+import type { Delivery, DriverAssignment } from '@/lib/types';
 import { DeliveryStatusBadge, type DeliveryStatus } from '@/components/delivery-status-badge';
 
-export function getDeliveryStatus(d: Delivery): DeliveryStatus {
-  // HdrGoodsMvtIncompletionStatus 'C' = goods movement complete = Delivered
-  if (d.HdrGoodsMvtIncompletionStatus === 'C') return 'Delivered';
-  // Check if DeliveryDate is past
+// Status derivation rules:
+//   1. Driver assignment Status='DELIVERED' (driver tapped Confirm) → Delivered
+//   2. Driver assignment Status='IN_TRANSIT' OR SAP HdrGoodsMvtIncompletionStatus='C'
+//      (goods left the warehouse) → In Transit
+//   3. DeliveryDate in the past AND not yet Delivered → Delayed
+//   4. Otherwise (no assignment, or assignment is just ASSIGNED, goods not issued) → Open
+export function getDeliveryStatus(d: Delivery, assignment?: DriverAssignment): DeliveryStatus {
+  if (assignment?.Status === 'DELIVERED') return 'Delivered';
+
+  const goodsIssued = d.HdrGoodsMvtIncompletionStatus === 'C';
+  const inTransit = assignment?.Status === 'IN_TRANSIT' || goodsIssued;
+
   if (d.DeliveryDate) {
     const due = new Date(d.DeliveryDate);
     if (!isNaN(due.getTime()) && due < new Date()) return 'Delayed';
   }
+
+  if (inTransit) return 'In Transit';
   return 'Open';
 }
 
@@ -23,9 +33,10 @@ function formatDate(dateStr?: string) {
 
 interface DeliveryTableProps {
   deliveries: Delivery[];
+  assignmentsByDelivery?: Record<string, DriverAssignment>;
 }
 
-export function DeliveryTable({ deliveries }: DeliveryTableProps) {
+export function DeliveryTable({ deliveries, assignmentsByDelivery = {} }: DeliveryTableProps) {
   if (deliveries.length === 0) {
     return <div className="text-sm text-muted-foreground py-8 text-center">No deliveries found.</div>;
   }
@@ -43,7 +54,7 @@ export function DeliveryTable({ deliveries }: DeliveryTableProps) {
         </thead>
         <tbody>
           {deliveries.map((d) => {
-            const status = getDeliveryStatus(d);
+            const status = getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]);
             return (
               <tr key={d.DeliveryDocument} className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs text-indigo-400">{d.DeliveryDocument}</td>

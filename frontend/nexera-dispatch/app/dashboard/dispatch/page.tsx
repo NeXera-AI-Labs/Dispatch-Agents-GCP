@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { getCurrentUser } from '@/lib/auth';
-import { listDeliveries } from '@/lib/api';
-import type { Delivery } from '@/lib/types';
+import { listDeliveries, listAssignments } from '@/lib/api';
+import type { Delivery, DriverAssignment } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
 import { KpiCard } from '@/components/kpi-card';
 import { DeliveryTable, getDeliveryStatus } from '@/components/delivery-table';
@@ -12,6 +12,7 @@ import { ChatPanel } from '@/components/chat-panel';
 export default function DispatchPage() {
   const [warehouseNumber, setWarehouseNumber] = useState('0001');
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [assignmentsByDelivery, setAssignmentsByDelivery] = useState<Record<string, DriverAssignment>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [chatOpen, setChatOpen] = useState(false);
@@ -21,20 +22,35 @@ export default function DispatchPage() {
     const user = getCurrentUser();
     const wh = user?.warehouse_numbers?.[0] ?? '0001';
     setWarehouseNumber(wh);
-    listDeliveries(wh)
-      .then(setDeliveries)
+    Promise.all([listDeliveries(wh), listAssignments().catch(() => [])])
+      .then(([deliveriesRes, assignments]) => {
+        setDeliveries(deliveriesRes);
+        // Latest assignment wins per delivery (sort by AssignedAt desc, then index by DeliveryDocument)
+        const sorted = [...assignments].sort((a, b) =>
+          (b.AssignedAt ?? '').localeCompare(a.AssignedAt ?? '')
+        );
+        const byDelivery: Record<string, DriverAssignment> = {};
+        for (const a of sorted) {
+          if (a.DeliveryDocument && !byDelivery[a.DeliveryDocument]) {
+            byDelivery[a.DeliveryDocument] = a;
+          }
+        }
+        setAssignmentsByDelivery(byDelivery);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
   const counts = {
-    Open: deliveries.filter(d => getDeliveryStatus(d) === 'Open').length,
-    'In Transit': deliveries.filter(d => getDeliveryStatus(d) === 'In Transit').length,
-    Delayed: deliveries.filter(d => getDeliveryStatus(d) === 'Delayed').length,
-    Delivered: deliveries.filter(d => getDeliveryStatus(d) === 'Delivered').length,
+    Open: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Open').length,
+    'In Transit': deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'In Transit').length,
+    Delayed: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Delayed').length,
+    Delivered: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Delivered').length,
   };
 
-  const filtered = filter === 'All' ? deliveries : deliveries.filter(d => getDeliveryStatus(d) === filter);
+  const filtered = filter === 'All'
+    ? deliveries
+    : deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === filter);
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,7 +92,7 @@ export default function DispatchPage() {
         ) : error ? (
           <div className="text-sm text-red-400">Error: {error}</div>
         ) : (
-          <DeliveryTable deliveries={filtered} />
+          <DeliveryTable deliveries={filtered} assignmentsByDelivery={assignmentsByDelivery} />
         )}
       </main>
 
