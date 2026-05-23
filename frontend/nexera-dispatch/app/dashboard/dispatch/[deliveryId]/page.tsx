@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Package } from 'lucide-react';
 import { getDelivery, getDeliveryItems, listWarehouses } from '@/lib/api';
+import { getCurrentUser } from '@/lib/auth';
 import { DeliveryMap } from '@/components/delivery-map';
 import type { Delivery, DeliveryItem, Warehouse } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
@@ -37,7 +38,6 @@ export default function DeliveryDetailPage() {
 
   useEffect(() => {
     // SSR-safe: read user from localStorage only on client
-    const { getCurrentUser } = require('@/lib/auth');
     const user = getCurrentUser();
     const wh = user?.warehouse_numbers?.[0];
     setWarehouseNumber(wh);

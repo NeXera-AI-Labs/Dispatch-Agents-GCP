@@ -229,7 +229,7 @@ function TeamTab() {
 
   return (
     <div className="max-w-xl space-y-6">
-      <p className="text-sm text-muted-foreground">Invite a Warehouse Manager for a specific warehouse. They'll receive a link to set up their account.</p>
+      <p className="text-sm text-muted-foreground">Invite a Warehouse Manager for a specific warehouse. They&apos;ll receive a link to set up their account.</p>
 
       {warehouses.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center">
