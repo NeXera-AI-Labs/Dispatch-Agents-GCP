@@ -18,11 +18,26 @@ interface Assignment {
   EstimatedDuration?: string;
 }
 
-const CAP = process.env.NEXT_PUBLIC_CAP_URL || 'http://localhost:4004';
+// All cap-srv calls go through the Next.js /api/cap proxy to avoid CORS.
+// Public tracking page (no auth) — proxy forwards without a token.
+const CAP_PROXY = '/api/cap';
 
 export default function DriverTrackingPage() {
   const params = useParams();
-  const id = params?.id as string;
+  const rawId = params?.id as string;
+
+  // Recover from legacy QR codes that pointed at /tracking/index.html#<uuid>
+  // (the old Fiori app used a hash route). When the path segment is "index.html",
+  // the real ID lives in the URL fragment.
+  const [id, setId] = useState<string>('');
+  useEffect(() => {
+    if (!rawId) return;
+    if (rawId === 'index.html' && typeof window !== 'undefined' && window.location.hash) {
+      setId(window.location.hash.replace(/^#/, ''));
+    } else {
+      setId(rawId);
+    }
+  }, [rawId]);
 
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [error, setError] = useState('');
@@ -39,7 +54,7 @@ export default function DriverTrackingPage() {
   // Load assignment
   useEffect(() => {
     if (!id) return;
-    fetch(`${CAP}/odata/v4/tracking/getAssignment(assignmentId='${id}')`)
+    fetch(`${CAP_PROXY}/odata/v4/tracking/getAssignment(assignmentId='${id}')`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(a => {
         setAssignment(a);
@@ -53,7 +68,7 @@ export default function DriverTrackingPage() {
     if (!assignment || delivered) return;
 
     const sendLocation = (pos: GeolocationCoordinates) => {
-      fetch(`${CAP}/odata/v4/tracking/updateLocation`, {
+      fetch(`${CAP_PROXY}/odata/v4/tracking/updateLocation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,7 +116,7 @@ export default function DriverTrackingPage() {
     posRef.current = coords;
     setGpsText(`${lat.toFixed(6)}, ${lng.toFixed(6)} (simulated)`);
     setGpsWarning(false);
-    fetch(`${CAP}/odata/v4/tracking/updateLocation`, {
+    fetch(`${CAP_PROXY}/odata/v4/tracking/updateLocation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ assignmentId: id, latitude: lat, longitude: lng, speed: 40, accuracy: 10 }),
@@ -114,7 +129,7 @@ export default function DriverTrackingPage() {
     if (!confirm('Mark this delivery as completed?')) return;
     setConfirming(true);
     try {
-      const r = await fetch(`${CAP}/odata/v4/tracking/confirmDelivery`, {
+      const r = await fetch(`${CAP_PROXY}/odata/v4/tracking/confirmDelivery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assignmentId: id }),
