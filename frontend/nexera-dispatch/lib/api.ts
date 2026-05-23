@@ -110,6 +110,16 @@ export const listAssignments = () =>
   capGet<{ value: DriverAssignment[] }>(`/odata/v4/tracking/DriverAssignment?$top=200`)
     .then(r => r.value ?? []);
 
+// Latest active (or most recent) assignment for a given delivery document.
+// Used by the detail page to decide whether to show the assign form or the existing driver card.
+export const getAssignmentByDelivery = (deliveryDoc: string) =>
+  listAssignments().then(list => {
+    const matches = list
+      .filter(a => a.DeliveryDocument === deliveryDoc)
+      .sort((a, b) => (b.AssignedAt ?? '').localeCompare(a.AssignedAt ?? ''));
+    return matches[0] ?? null;
+  });
+
 // ── Warehouses ────────────────────────────────────────────────────────
 
 export const listWarehouses = () =>

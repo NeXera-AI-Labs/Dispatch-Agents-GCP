@@ -2,14 +2,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Package } from 'lucide-react';
-import { getDelivery, getDeliveryItems, listWarehouses } from '@/lib/api';
+import { getDelivery, getDeliveryItems, listWarehouses, getAssignmentByDelivery } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import { DeliveryMap } from '@/components/delivery-map';
-import type { Delivery, DeliveryItem, Warehouse } from '@/lib/types';
+import type { Delivery, DeliveryItem, Warehouse, DriverAssignment } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
 import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
 import { DriverAssignForm } from '@/components/driver-assign-form';
-import { QrDisplay } from '@/components/qr-display';
+import { AssignmentCard } from '@/components/assignment-card';
 import { getDeliveryStatus } from '@/components/delivery-table';
 
 function DetailRow({ label, value }: { label: string; value?: string | number }) {
@@ -32,9 +32,7 @@ export default function DeliveryDetailPage() {
   const [items, setItems] = useState<DeliveryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [qrImage, setQrImage] = useState('');
-  const [qrUrl, setQrUrl] = useState('');
-  const [assignmentId, setAssignmentId] = useState('');
+  const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
 
   useEffect(() => {
     // SSR-safe: read user from localStorage only on client
@@ -57,15 +55,37 @@ export default function DeliveryDetailPage() {
 
   useEffect(() => {
     if (!deliveryId) return;
-    // Fetch delivery and items independently — items failure won't block delivery display
+    // Fetch delivery, items, and existing assignment independently
     getDelivery(deliveryId)
       .then(setDelivery)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
     getDeliveryItems(deliveryId)
       .then(setItems)
-      .catch(() => setItems([])); // items are optional — silently ignore failure
+      .catch(() => setItems([]));
+    getAssignmentByDelivery(deliveryId)
+      .then(setAssignment)
+      .catch(() => setAssignment(null));
   }, [deliveryId]);
+
+  function handleNewAssignment(qrImage: string, qrUrl: string, id?: string) {
+    // After successful assign, refetch the canonical assignment so the card has full data (ETA, etc.)
+    if (id) {
+      getAssignmentByDelivery(deliveryId)
+        .then(a => setAssignment(a ?? {
+          ID: id,
+          DeliveryDocument: deliveryId,
+          MobileNumber: '',
+          DriverName: '',
+          TruckRegistration: '',
+          Status: 'ASSIGNED',
+          AssignedAt: new Date().toISOString(),
+          QRCodeImage: qrImage,
+          QRCodeUrl: qrUrl,
+        }))
+        .catch(() => {});
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,7 +112,7 @@ export default function DeliveryDetailPage() {
               <div className="bg-card border border-border rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-foreground">Delivery Details</h2>
-                  <DeliveryStatusBadge status={getDeliveryStatus(delivery)} />
+                  <DeliveryStatusBadge status={getDeliveryStatus(delivery, assignment ?? undefined)} />
                 </div>
                 <DetailRow label="Ship-To Party" value={delivery.ShipToParty} />
                 <DetailRow label="Shipping Point" value={delivery.ShippingPoint} />
@@ -100,8 +120,6 @@ export default function DeliveryDetailPage() {
                 <DetailRow label="Delivery Date" value={delivery.DeliveryDate ? new Date(delivery.DeliveryDate).toLocaleDateString() : undefined} />
                 <DetailRow label="Gross Weight" value={delivery.HeaderGrossWeight !== undefined ? `${delivery.HeaderGrossWeight} kg` : undefined} />
                 <DetailRow label="Sales Org" value={delivery.SalesOrganization} />
-                {delivery.driver_name && <DetailRow label="Driver" value={delivery.driver_name} />}
-                {delivery.driver_mobile && <DetailRow label="Driver Mobile" value={delivery.driver_mobile} />}
               </div>
 
               {/* Items */}
@@ -123,14 +141,14 @@ export default function DeliveryDetailPage() {
               )}
             </div>
 
-            {/* Right: driver assign or QR */}
+            {/* Right: existing assignment card OR assign form */}
             <div className="bg-card border border-border rounded-xl p-5">
-              {qrImage ? (
-                <QrDisplay qrImage={qrImage} qrUrl={qrUrl} />
+              {assignment ? (
+                <AssignmentCard assignment={assignment} />
               ) : (
                 <DriverAssignForm
                   deliveryDoc={deliveryId}
-                  onAssigned={(img, url, id) => { setQrImage(img); setQrUrl(url); if (id) setAssignmentId(id); }}
+                  onAssigned={handleNewAssignment}
                 />
               )}
             </div>
@@ -140,7 +158,7 @@ export default function DeliveryDetailPage() {
         {delivery && (
           <DeliveryMap
             shipToParty={delivery.ShipToParty}
-            assignmentId={assignmentId || undefined}
+            assignmentId={assignment?.ID}
             warehouseAddress={warehouseAddress}
           />
         )}

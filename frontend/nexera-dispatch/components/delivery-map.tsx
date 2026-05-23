@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Navigation } from 'lucide-react';
-import { getDirections, getAssignment } from '@/lib/api';
+import { getDirections, getAssignment, getSettings } from '@/lib/api';
 import type { RouteDirections, DriverAssignment } from '@/lib/types';
 
 // Module-level promise — one load per page lifecycle, survives Strict Mode
@@ -55,14 +55,25 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
   const [error, setError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load Google Maps
+  // Load Google Maps — try the build-time public env first, then fall back
+  // to tenant_settings.google_maps_key from /api/settings. The fallback keeps
+  // the demo working even if a build forgot to bake the key into the bundle.
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-    if (!key) { setError(true); return; }
     let cancelled = false;
-    loadGoogleMaps(key)
-      .then(() => { if (!cancelled) setMapReady(true); })
-      .catch(() => { if (!cancelled) setError(true); });
+    const buildKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+    const start = (key?: string) => {
+      if (!key) { setError(true); return; }
+      loadGoogleMaps(key)
+        .then(() => { if (!cancelled) setMapReady(true); })
+        .catch(() => { if (!cancelled) setError(true); });
+    };
+    if (buildKey) {
+      start(buildKey);
+    } else {
+      getSettings()
+        .then(s => { if (!cancelled) start(s.google_maps_key); })
+        .catch(() => { if (!cancelled) setError(true); });
+    }
     return () => { cancelled = true; };
   }, []);
 
@@ -166,7 +177,14 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
     DELIVERED: 'bg-green-500/20 text-green-300 border-green-500/30',
   };
 
-  if (error) return null;
+  if (error) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5 text-xs text-muted-foreground">
+        Map unavailable — Google Maps key not configured. Set it in Admin → Settings,
+        or rebuild the frontend with <code className="font-mono">NEXT_PUBLIC_GOOGLE_MAPS_KEY</code>.
+      </div>
+    );
+  }
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
