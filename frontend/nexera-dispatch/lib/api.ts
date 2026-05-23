@@ -84,18 +84,24 @@ export const testConnection = (connection_id: string) =>
 export const assignWarehouseManager = (connection_id: string, warehouse_number: string, manager_email: string) =>
   apiPost<{ invite_url: string }>(`/api/connections/${connection_id}/assign-manager`, { warehouse_number, manager_email }, true);
 
-// ── Deliveries (cap-srv Cloud Run — SAP OData proxy) ──────────────────
+// ── Deliveries (Next.js API → Postgres cache, populated via Import) ──
 
-// SAP sandbox data has no WarehouseNumber field — fetch all, $top=100
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const listDeliveries = (_warehouse_number: string) =>
-  capGet<Delivery[]>(`/odata/v4/ewm/OutboundDeliveries?$top=100`);
+  apiGet<Delivery[]>('/api/deliveries', true);
 
 export const getDelivery = (deliveryId: string) =>
-  capGet<Delivery>(`/odata/v4/ewm/OutboundDeliveries('${deliveryId}')`);
+  apiGet<Delivery>(`/api/deliveries?id=${encodeURIComponent(deliveryId)}`, true);
 
 export const getDeliveryItems = (deliveryDoc: string) =>
-  capPost<DeliveryItem[]>('/odata/v4/ewm/getDeliveryItems', { deliveryDoc });
+  apiGet<DeliveryItem[]>(`/api/deliveries/${encodeURIComponent(deliveryDoc)}/items`, true);
+
+export const importDeliveries = () =>
+  apiPost<{ headerCount: number; itemCount: number; durationMs: number }>(
+    '/api/deliveries/import',
+    {},
+    true,
+  );
 
 export const assignDriver = (deliveryDoc: string, mobileNumber: string, driverName: string, truckRegistration: string) =>
   capPost<{ QRCodeImage: string; QRCodeUrl: string; ID: string }>('/odata/v4/tracking/assignDriver', { deliveryDoc, mobileNumber, driverName, truckRegistration });

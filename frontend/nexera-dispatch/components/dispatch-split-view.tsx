@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ChevronRight } from 'lucide-react';
-import { listDeliveries, listAssignments, listWarehouses } from '@/lib/api';
+import { Search, ChevronRight, Download, Loader2, PackageOpen } from 'lucide-react';
+import { listDeliveries, listAssignments, listWarehouses, importDeliveries } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import type { Delivery, DriverAssignment, Warehouse } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
@@ -37,14 +37,14 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
   const [filter, setFilter] = useState<DeliveryStatus | 'All'>('All');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | undefined>(initialDeliveryId);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
 
   // Load user, warehouse address, deliveries, assignments
-  useEffect(() => {
-    const user = getCurrentUser();
-    const wh = user?.warehouse_numbers?.[0] ?? '0001';
-    setWarehouseNumber(wh);
-
-    Promise.all([
+  const loadData = useCallback((wh: string, autoSelect: boolean) => {
+    setLoading(true);
+    setError('');
+    return Promise.all([
       listDeliveries(wh),
       listAssignments().catch(() => []),
       listWarehouses().catch(() => [] as Warehouse[]),
@@ -66,14 +66,35 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
           if (addr) setWarehouseAddress(addr);
         }
 
-        // Auto-select first delivery if nothing in URL and we have data
-        if (!initialDeliveryId && d.length > 0) {
+        if (autoSelect && d.length > 0) {
           setSelected(d[0].DeliveryDocument);
         }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [initialDeliveryId]);
+  }, []);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    const wh = user?.warehouse_numbers?.[0] ?? '0001';
+    setWarehouseNumber(wh);
+    loadData(wh, !initialDeliveryId);
+  }, [initialDeliveryId, loadData]);
+
+  const handleImport = useCallback(async () => {
+    setImporting(true);
+    setImportMsg('');
+    try {
+      const r = await importDeliveries();
+      setImportMsg(`Imported ${r.headerCount} deliveries, ${r.itemCount} items in ${(r.durationMs / 1000).toFixed(1)}s`);
+      await loadData(warehouseNumber, deliveries.length === 0);
+    } catch (e) {
+      setImportMsg(`Import failed: ${(e as Error).message}`);
+    } finally {
+      setImporting(false);
+      setTimeout(() => setImportMsg(''), 5000);
+    }
+  }, [loadData, warehouseNumber, deliveries.length]);
 
   const counts = useMemo(() => ({
     'Not Assigned': deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Not Assigned').length,
@@ -147,7 +168,20 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-secondary/50 border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500/40"
             />
           </div>
+
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {importing
+              ? <><Loader2 size={13} className="animate-spin" /> Importing…</>
+              : <><Download size={13} /> Import Deliveries</>}
+          </button>
         </div>
+        {importMsg && (
+          <div className="px-4 lg:px-6 pb-2 text-xs text-indigo-300">{importMsg}</div>
+        )}
       </div>
 
       {/* Master-detail split — fills remaining viewport */}
@@ -158,6 +192,21 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
             <div className="p-6 text-sm text-muted-foreground">Loading deliveries…</div>
           ) : error ? (
             <div className="p-6 text-sm text-red-400">Error: {error}</div>
+          ) : deliveries.length === 0 ? (
+            <div className="p-8 text-center">
+              <PackageOpen size={32} className="mx-auto text-muted-foreground/60 mb-3" />
+              <p className="text-sm text-foreground font-medium mb-1">No deliveries yet</p>
+              <p className="text-xs text-muted-foreground mb-4">Import deliveries from your connected ERP to get started.</p>
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60"
+              >
+                {importing
+                  ? <><Loader2 size={13} className="animate-spin" /> Importing…</>
+                  : <><Download size={13} /> Import Deliveries</>}
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">No deliveries match.</div>
           ) : (
