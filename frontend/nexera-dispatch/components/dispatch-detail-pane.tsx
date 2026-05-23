@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { Package, Truck, UserPlus } from 'lucide-react';
+import { Package, UserPlus } from 'lucide-react';
 import { getDelivery, getDeliveryItems, getAssignmentByDelivery } from '@/lib/api';
 import type { Delivery, DeliveryItem, DriverAssignment } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
 import { AssignDriverDialog } from '@/components/assign-driver-dialog';
-import { AssignmentCard } from '@/components/assignment-card';
+import { DeliveryRouteCard } from '@/components/delivery-route-card';
 import { DeliveryMap } from '@/components/delivery-map';
 import { getDeliveryStatus } from '@/components/delivery-table';
 
@@ -14,15 +14,6 @@ interface DispatchDetailPaneProps {
   deliveryId: string;
   warehouseAddress?: string;
   onAssignmentChange?: (deliveryId: string, assignment: DriverAssignment | null) => void;
-}
-
-function DetailRow({ label, value }: { label: string; value?: string | number }) {
-  return (
-    <div className="flex justify-between py-2 border-b border-border/40 last:border-0">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-foreground font-medium text-right">{value ?? '—'}</span>
-    </div>
-  );
 }
 
 export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentChange }: DispatchDetailPaneProps) {
@@ -155,27 +146,18 @@ export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentC
         height={380}
       />
 
-      {/* Delivery Details */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Delivery Details</h3>
-        <DetailRow label="Ship-To Party" value={delivery.ShipToParty} />
-        <DetailRow label="Shipping Point" value={delivery.ShippingPoint} />
-        <DetailRow label="Route" value={delivery.ActualDeliveryRoute} />
-        <DetailRow label="Delivery Date" value={delivery.DeliveryDate ? new Date(delivery.DeliveryDate).toLocaleDateString() : undefined} />
-        <DetailRow label="Gross Weight" value={delivery.HeaderGrossWeight !== undefined ? `${delivery.HeaderGrossWeight} kg` : undefined} />
-        <DetailRow label="Sales Org" value={delivery.SalesOrganization} />
-      </div>
-
-      {/* Assignment (only if exists) */}
-      {assignment && (
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Truck size={14} className="text-indigo-400" />
-            Driver Assignment
-          </h3>
-          <AssignmentCard assignment={assignment} routeSummary={routeSummary} />
-        </div>
-      )}
+      {/* Delivery Details + Driver: 2-column card */}
+      <DeliveryRouteCard
+        shipFromCode={delivery.ShippingPoint}
+        shipToCode={delivery.ShipToParty}
+        warehouseAddress={warehouseAddress}
+        routeCode={delivery.ActualDeliveryRoute}
+        deliveryDate={delivery.DeliveryDate}
+        grossWeightKg={delivery.HeaderGrossWeight}
+        itemsCount={items.length}
+        assignment={assignment}
+        routeSummary={routeSummary}
+      />
 
       <AssignDriverDialog
         open={assignOpen}

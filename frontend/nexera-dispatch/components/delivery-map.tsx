@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Navigation } from 'lucide-react';
 import { getAssignment, getSettings } from '@/lib/api';
 import type { DriverAssignment } from '@/lib/types';
+import { resolveAddressLine } from '@/lib/addresses';
 
 // Module-level promise — one load per page lifecycle, survives Strict Mode
 let gmapsPromise: Promise<void> | null = null;
@@ -48,16 +49,7 @@ declare global {
 // which is what the user asked for (matches native maps.google.com look).
 const MAP_ID = 'DEMO_MAP_ID';
 
-// SAP sandbox ship-to codes don't geocode — map them to real addresses for the demo.
-// Mirrors the same mapping in cap-srv/srv/gmap_srv.js so behaviour is consistent
-// whether the route comes from cap-srv or DirectionsService client-side.
-const ADDRESS_MAP: Record<string, string> = {
-  '1710': 'Heidenkampsweg 58, Hamburg, Germany',
-  '17100001': 'Dammtorstraße 1, Hamburg, Germany',
-  '17100003': 'Mönckebergstraße 7, Hamburg, Germany',
-  '17100006': 'Spitalerstraße 10, Hamburg, Germany',
-};
-const resolveAddress = (s?: string) => (s && ADDRESS_MAP[s]) || s || '';
+const resolveAddress = (s?: string) => resolveAddressLine(s);
 
 export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onSummary, height = 420 }: DeliveryMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
