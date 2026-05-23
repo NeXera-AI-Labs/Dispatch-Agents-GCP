@@ -66,20 +66,19 @@ INSERT INTO user_warehouses (user_id, warehouse_number, tenant_id, role) VALUES
 ON CONFLICT (user_id, warehouse_number, tenant_id) DO NOTHING;
 
 -- tenant_settings holds tenant-scoped integrations.
--- google_maps_key / teams_webhook_url / gemini_api_key are passed in via -v from the seed runner,
+-- google_maps_key / teams_webhook_url are passed in via -v from the seed runner,
 -- which sources them from Secret Manager. Re-seeds overwrite with the latest values.
-INSERT INTO tenant_settings (tenant_id, google_maps_key, teams_webhook_url, gemini_api_key, updated_at)
+-- Gemini auth uses ADC (the agents service account has roles/aiplatform.user) — no key here.
+INSERT INTO tenant_settings (tenant_id, google_maps_key, teams_webhook_url, updated_at)
 VALUES (
   :tenant_id,
   NULLIF(:'google_maps_key', ''),
   NULLIF(:'teams_webhook_url', ''),
-  NULLIF(:'gemini_api_key', ''),
   NOW()
 )
 ON CONFLICT (tenant_id) DO UPDATE SET
   google_maps_key   = COALESCE(EXCLUDED.google_maps_key,   tenant_settings.google_maps_key),
   teams_webhook_url = COALESCE(EXCLUDED.teams_webhook_url, tenant_settings.teams_webhook_url),
-  gemini_api_key    = COALESCE(EXCLUDED.gemini_api_key,    tenant_settings.gemini_api_key),
   updated_at        = NOW();
 
 \echo 'Seed complete: Acme Logistics demo tenant ready.'
