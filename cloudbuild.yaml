@@ -3,6 +3,7 @@ substitutions:
   _PROJECT: agentic-dispatch
   _REPO: us-central1-docker.pkg.dev/agentic-dispatch/cloud-run-source-deploy
   _CAP_URL: https://cap-srv-1069189829983.us-central1.run.app
+  _GOOGLE_MAPS_KEY: ""
 
 steps:
 
@@ -14,17 +15,18 @@ steps:
       - -f
       - frontend/nexera-dispatch/Dockerfile
       - -t
-      - ${_REPO}/frontend:$COMMIT_SHA
+      - $_REPO/frontend:$COMMIT_SHA
       - -t
-      - ${_REPO}/frontend:latest
+      - $_REPO/frontend:latest
       - --build-arg
-      - NEXT_PUBLIC_CAP_URL=${_CAP_URL}
+      - NEXT_PUBLIC_CAP_URL=$_CAP_URL
       - --build-arg
-      - NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.${_REGION}.run.app
+      - NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.$_REGION.run.app
       - --build-arg
       - NEXT_PUBLIC_GOOGLE_MAPS_KEY=$_GOOGLE_MAPS_KEY
       - frontend/nexera-dispatch
-    waitFor: ['-']
+    waitFor:
+      - "-"
 
   # ── 2. BUILD AGENTS ────────────────────────────────────────────────────────
   - id: build-agents
@@ -34,22 +36,31 @@ steps:
       - -f
       - agents/Dockerfile
       - -t
-      - ${_REPO}/agents:$COMMIT_SHA
+      - $_REPO/agents:$COMMIT_SHA
       - -t
-      - ${_REPO}/agents:latest
+      - $_REPO/agents:latest
       - agents
-    waitFor: ['-']
+    waitFor:
+      - "-"
 
   # ── 3. PUSH IMAGES ─────────────────────────────────────────────────────────
   - id: push-frontend
     name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, ${_REPO}/frontend]
-    waitFor: [build-frontend]
+    args:
+      - push
+      - --all-tags
+      - $_REPO/frontend
+    waitFor:
+      - build-frontend
 
   - id: push-agents
     name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, ${_REPO}/agents]
-    waitFor: [build-agents]
+    args:
+      - push
+      - --all-tags
+      - $_REPO/agents
+    waitFor:
+      - build-agents
 
   # ── 4. DEPLOY FRONTEND ─────────────────────────────────────────────────────
   - id: deploy-frontend
@@ -59,16 +70,17 @@ steps:
       - run
       - deploy
       - frontend
-      - --image=${_REPO}/frontend:$COMMIT_SHA
-      - --region=${_REGION}
-      - --project=${_PROJECT}
+      - --image=$_REPO/frontend:$COMMIT_SHA
+      - --region=$_REGION
+      - --project=$_PROJECT
       - --platform=managed
       - --allow-unauthenticated
       - --port=8080
-      - --add-cloudsql-instances=${_PROJECT}:${_REGION}:nexera-sbx-db
-      - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_CAP_URL=${_CAP_URL},NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.${_REGION}.run.app,AGENTS_URL=https://agents-1069189829983.${_REGION}.run.app
+      - --add-cloudsql-instances=$_PROJECT:$_REGION:nexera-sbx-db
+      - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_CAP_URL=$_CAP_URL,NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.$_REGION.run.app,AGENTS_URL=https://agents-1069189829983.$_REGION.run.app
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,NEXT_PUBLIC_GOOGLE_MAPS_KEY=GOOGLE_MAPS_API_KEY:latest
-    waitFor: [push-frontend]
+    waitFor:
+      - push-frontend
 
   # ── 5. DEPLOY AGENTS ───────────────────────────────────────────────────────
   - id: deploy-agents
@@ -78,15 +90,16 @@ steps:
       - run
       - deploy
       - agents
-      - --image=${_REPO}/agents:$COMMIT_SHA
-      - --region=${_REGION}
-      - --project=${_PROJECT}
+      - --image=$_REPO/agents:$COMMIT_SHA
+      - --region=$_REGION
+      - --project=$_PROJECT
       - --platform=managed
       - --allow-unauthenticated
       - --port=8080
-      - --set-env-vars=GOOGLE_PROJECT_ID=${_PROJECT},VERTEX_LOCATION=${_REGION},VERTEX_MODEL=gemini-2.5-flash,CAP_BASE_URL=${_CAP_URL}
+      - --set-env-vars=GOOGLE_PROJECT_ID=$_PROJECT,VERTEX_LOCATION=$_REGION,VERTEX_MODEL=gemini-2.5-flash,CAP_BASE_URL=$_CAP_URL
       - --set-secrets=TEAMS_WEBHOOK_URL=TEAMS_WEBHOOK_URL:latest
-    waitFor: [push-agents]
+    waitFor:
+      - push-agents
 
   # ── 6. UPDATE CAP-SRV FRONTEND_BASE_URL ────────────────────────────────────
   - id: update-cap-srv
@@ -97,16 +110,17 @@ steps:
       - services
       - update
       - cap-srv
-      - --region=${_REGION}
-      - --project=${_PROJECT}
-      - --update-env-vars=FRONTEND_BASE_URL=https://frontend-1069189829983.${_REGION}.run.app
-    waitFor: [deploy-frontend]
+      - --region=$_REGION
+      - --project=$_PROJECT
+      - --update-env-vars=FRONTEND_BASE_URL=https://frontend-1069189829983.$_REGION.run.app
+    waitFor:
+      - deploy-frontend
 
 images:
-  - ${_REPO}/frontend:$COMMIT_SHA
-  - ${_REPO}/frontend:latest
-  - ${_REPO}/agents:$COMMIT_SHA
-  - ${_REPO}/agents:latest
+  - $_REPO/frontend:$COMMIT_SHA
+  - $_REPO/frontend:latest
+  - $_REPO/agents:$COMMIT_SHA
+  - $_REPO/agents:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
