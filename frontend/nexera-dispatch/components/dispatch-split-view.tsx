@@ -153,7 +153,7 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
       {/* Master-detail split — fills remaining viewport */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: list */}
-        <aside className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-r border-border overflow-y-auto bg-card/20">
+        <aside className="w-full lg:w-1/3 shrink-0 border-r border-border overflow-y-auto bg-card/20">
           {loading ? (
             <div className="p-6 text-sm text-muted-foreground">Loading deliveries…</div>
           ) : error ? (
@@ -204,7 +204,7 @@ export function DispatchSplitView({ initialDeliveryId }: DispatchSplitViewProps)
 
         {/* Right: detail */}
         <section className="flex-1 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-4 lg:px-6 py-6">
+          <div className="px-4 lg:px-6 py-6">
             {selected ? (
               <DispatchDetailPane
                 key={selected}

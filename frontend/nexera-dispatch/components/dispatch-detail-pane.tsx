@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { Package, Truck } from 'lucide-react';
+import { Package, Truck, UserPlus } from 'lucide-react';
 import { getDelivery, getDeliveryItems, getAssignmentByDelivery } from '@/lib/api';
 import type { Delivery, DeliveryItem, DriverAssignment } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
-import { DriverAssignForm } from '@/components/driver-assign-form';
+import { AssignDriverDialog } from '@/components/assign-driver-dialog';
 import { AssignmentCard } from '@/components/assignment-card';
 import { DeliveryMap } from '@/components/delivery-map';
 import { getDeliveryStatus } from '@/components/delivery-table';
@@ -31,8 +32,8 @@ export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [routeSummary, setRouteSummary] = useState<{ distance: string; duration: string } | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
 
-  // Stable callback so DeliveryMap's effect deps don't churn
   const handleSummary = useCallback((s: { distance: string; duration: string }) => setRouteSummary(s), []);
 
   useEffect(() => {
@@ -86,57 +87,34 @@ export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentC
     return <div className="p-6 text-sm text-muted-foreground">Delivery not found.</div>;
   }
 
+  const status = getDeliveryStatus(delivery, assignment ?? undefined);
+
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-foreground font-mono">{delivery.DeliveryDocument}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {delivery.ShipToParty ? `Ship-to ${delivery.ShipToParty}` : 'Delivery details'}
           </p>
         </div>
-        <DeliveryStatusBadge status={getDeliveryStatus(delivery, assignment ?? undefined)} />
-      </div>
-
-      {/* Map — full width */}
-      <DeliveryMap
-        shipToParty={delivery.ShipToParty}
-        assignmentId={assignment?.ID}
-        warehouseAddress={warehouseAddress}
-        onSummary={handleSummary}
-        height={380}
-      />
-
-      {/* Two-column: details + assignment / items */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Delivery Details</h3>
-          <DetailRow label="Ship-To Party" value={delivery.ShipToParty} />
-          <DetailRow label="Shipping Point" value={delivery.ShippingPoint} />
-          <DetailRow label="Route" value={delivery.ActualDeliveryRoute} />
-          <DetailRow label="Delivery Date" value={delivery.DeliveryDate ? new Date(delivery.DeliveryDate).toLocaleDateString() : undefined} />
-          <DetailRow label="Gross Weight" value={delivery.HeaderGrossWeight !== undefined ? `${delivery.HeaderGrossWeight} kg` : undefined} />
-          <DetailRow label="Sales Org" value={delivery.SalesOrganization} />
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Truck size={14} className="text-indigo-400" />
-            {assignment ? 'Driver Assignment' : 'Assign Driver'}
-          </h3>
-          {assignment ? (
-            <AssignmentCard assignment={assignment} routeSummary={routeSummary} />
-          ) : (
-            <DriverAssignForm
-              deliveryDoc={deliveryId}
-              onAssigned={handleNewAssignment}
-            />
+        <div className="flex items-center gap-3">
+          <DeliveryStatusBadge status={status} />
+          {!assignment && (
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={() => setAssignOpen(true)}
+            >
+              <UserPlus size={14} className="mr-1.5" />
+              Assign Driver
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Items — full width */}
+      {/* Items */}
       {items.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-5">
           <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -167,6 +145,44 @@ export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentC
           </div>
         </div>
       )}
+
+      {/* Map */}
+      <DeliveryMap
+        shipToParty={delivery.ShipToParty}
+        assignmentId={assignment?.ID}
+        warehouseAddress={warehouseAddress}
+        onSummary={handleSummary}
+        height={380}
+      />
+
+      {/* Delivery Details */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Delivery Details</h3>
+        <DetailRow label="Ship-To Party" value={delivery.ShipToParty} />
+        <DetailRow label="Shipping Point" value={delivery.ShippingPoint} />
+        <DetailRow label="Route" value={delivery.ActualDeliveryRoute} />
+        <DetailRow label="Delivery Date" value={delivery.DeliveryDate ? new Date(delivery.DeliveryDate).toLocaleDateString() : undefined} />
+        <DetailRow label="Gross Weight" value={delivery.HeaderGrossWeight !== undefined ? `${delivery.HeaderGrossWeight} kg` : undefined} />
+        <DetailRow label="Sales Org" value={delivery.SalesOrganization} />
+      </div>
+
+      {/* Assignment (only if exists) */}
+      {assignment && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Truck size={14} className="text-indigo-400" />
+            Driver Assignment
+          </h3>
+          <AssignmentCard assignment={assignment} routeSummary={routeSummary} />
+        </div>
+      )}
+
+      <AssignDriverDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        deliveryDoc={deliveryId}
+        onAssigned={handleNewAssignment}
+      />
     </div>
   );
 }
