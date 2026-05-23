@@ -3,25 +3,14 @@ import Link from 'next/link';
 import type { Delivery, DriverAssignment } from '@/lib/types';
 import { DeliveryStatusBadge, type DeliveryStatus } from '@/components/delivery-status-badge';
 
-// Status derivation rules:
-//   1. Driver assignment Status='DELIVERED' (driver tapped Confirm) → Delivered
-//   2. Driver assignment Status='IN_TRANSIT' OR SAP HdrGoodsMvtIncompletionStatus='C'
-//      (goods left the warehouse) → In Transit
-//   3. DeliveryDate in the past AND not yet Delivered → Delayed
-//   4. Otherwise (no assignment, or assignment is just ASSIGNED, goods not issued) → Open
-export function getDeliveryStatus(d: Delivery, assignment?: DriverAssignment): DeliveryStatus {
-  if (assignment?.Status === 'DELIVERED') return 'Delivered';
-
-  const goodsIssued = d.HdrGoodsMvtIncompletionStatus === 'C';
-  const inTransit = assignment?.Status === 'IN_TRANSIT' || goodsIssued;
-
-  if (d.DeliveryDate) {
-    const due = new Date(d.DeliveryDate);
-    if (!isNaN(due.getTime()) && due < new Date()) return 'Delayed';
-  }
-
-  if (inTransit) return 'In Transit';
-  return 'Open';
+// Status derivation:
+//   - No DriverAssignment for the delivery        → Not Assigned
+//   - assignment.Status = 'DELIVERED'             → Delivered
+//   - assignment.Status = 'ASSIGNED' | 'IN_TRANSIT' → On the Way
+export function getDeliveryStatus(_d: Delivery, assignment?: DriverAssignment): DeliveryStatus {
+  if (!assignment) return 'Not Assigned';
+  if (assignment.Status === 'DELIVERED') return 'Delivered';
+  return 'On the Way';
 }
 
 function formatDate(dateStr?: string) {
@@ -47,6 +36,8 @@ export function DeliveryTable({ deliveries, assignmentsByDelivery = {} }: Delive
           <tr className="border-b border-border bg-secondary/30">
             <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Delivery</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ship-To</th>
+            <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Driver</th>
+            <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Truck</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</th>
             <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Action</th>
@@ -54,11 +45,14 @@ export function DeliveryTable({ deliveries, assignmentsByDelivery = {} }: Delive
         </thead>
         <tbody>
           {deliveries.map((d) => {
-            const status = getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]);
+            const assignment = assignmentsByDelivery[d.DeliveryDocument];
+            const status = getDeliveryStatus(d, assignment);
             return (
               <tr key={d.DeliveryDocument} className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs text-indigo-400">{d.DeliveryDocument}</td>
                 <td className="px-4 py-3 text-sm text-foreground">{d.ShipToParty ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-foreground">{assignment?.DriverName ?? '—'}</td>
+                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{assignment?.TruckRegistration ?? '—'}</td>
                 <td className="px-4 py-3"><DeliveryStatusBadge status={status} /></td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(d.DeliveryDate)}</td>
                 <td className="px-4 py-3 text-right">

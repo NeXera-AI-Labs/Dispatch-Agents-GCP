@@ -42,10 +42,9 @@ export default function DispatchPage() {
   }, []);
 
   const counts = {
-    Open: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Open').length,
-    'In Transit': deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'In Transit').length,
-    Delayed: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Delayed').length,
-    Delivered: deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Delivered').length,
+    'Not Assigned': deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Not Assigned').length,
+    'On the Way':   deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'On the Way').length,
+    'Delivered':    deliveries.filter(d => getDeliveryStatus(d, assignmentsByDelivery[d.DeliveryDocument]) === 'Delivered').length,
   };
 
   const filtered = filter === 'All'
@@ -65,16 +64,15 @@ export default function DispatchPage() {
         </div>
 
         {/* KPI tiles */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <KpiCard label="Open" value={counts.Open} />
-          <KpiCard label="In Transit" value={counts['In Transit']} accent="indigo" />
-          <KpiCard label="Delayed" value={counts.Delayed} accent="yellow" />
-          <KpiCard label="Delivered" value={counts.Delivered} accent="green" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <KpiCard label="Not Assigned" value={counts['Not Assigned']} />
+          <KpiCard label="On the Way"   value={counts['On the Way']}   accent="indigo" />
+          <KpiCard label="Delivered"    value={counts.Delivered}        accent="green" />
         </div>
 
         {/* Filter tabs */}
         <div className="flex gap-2 flex-wrap">
-          {(['All', 'Open', 'In Transit', 'Delayed', 'Delivered'] as const).map(f => (
+          {(['All', 'Not Assigned', 'On the Way', 'Delivered'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 filter === f
