@@ -47,23 +47,38 @@ export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentC
     }).finally(() => setLoading(false));
   }, [deliveryId]);
 
-  function handleNewAssignment(qrImage: string, qrUrl: string, id?: string) {
-    if (!id) return;
+  function handleNewAssignment(result: {
+    id: string;
+    qrImage: string;
+    qrUrl: string;
+    driverName: string;
+    mobileNumber: string;
+    truckRegistration: string;
+  }) {
+    // Optimistic update so the status badge flips to "On the Way" and the
+    // driver card renders immediately, without waiting for the round-trip.
+    const optimistic: DriverAssignment = {
+      ID: result.id,
+      DeliveryDocument: deliveryId,
+      DriverName: result.driverName,
+      MobileNumber: result.mobileNumber,
+      TruckRegistration: result.truckRegistration,
+      Status: 'ASSIGNED',
+      AssignedAt: new Date().toISOString(),
+      QRCodeImage: result.qrImage,
+      QRCodeUrl: result.qrUrl,
+    };
+    setAssignment(optimistic);
+    onAssignmentChange?.(deliveryId, optimistic);
+
+    // Reconcile with server-side row so we pick up the canonical AssignedAt,
+    // EstimatedDuration, etc. (overwrites the optimistic one).
     getAssignmentByDelivery(deliveryId)
       .then(a => {
-        const final = a ?? {
-          ID: id,
-          DeliveryDocument: deliveryId,
-          MobileNumber: '',
-          DriverName: '',
-          TruckRegistration: '',
-          Status: 'ASSIGNED' as const,
-          AssignedAt: new Date().toISOString(),
-          QRCodeImage: qrImage,
-          QRCodeUrl: qrUrl,
-        };
-        setAssignment(final);
-        onAssignmentChange?.(deliveryId, final);
+        if (a) {
+          setAssignment(a);
+          onAssignmentChange?.(deliveryId, a);
+        }
       })
       .catch(() => {});
   }

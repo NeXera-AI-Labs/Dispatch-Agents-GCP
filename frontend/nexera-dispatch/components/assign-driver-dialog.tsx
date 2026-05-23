@@ -18,7 +18,14 @@ interface AssignDriverDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deliveryDoc: string;
-  onAssigned: (qrImage: string, qrUrl: string, assignmentId?: string) => void;
+  onAssigned: (result: {
+    id: string;
+    qrImage: string;
+    qrUrl: string;
+    driverName: string;
+    mobileNumber: string;
+    truckRegistration: string;
+  }) => void;
 }
 
 export function AssignDriverDialog({ open, onOpenChange, deliveryDoc, onAssigned }: AssignDriverDialogProps) {
@@ -34,7 +41,14 @@ export function AssignDriverDialog({ open, onOpenChange, deliveryDoc, onAssigned
     setLoading(true); setError('');
     try {
       const res = await assignDriver(deliveryDoc, mobile, driverName, truck);
-      onAssigned(res.QRCodeImage, res.QRCodeUrl, res.ID);
+      onAssigned({
+        id: res.ID,
+        qrImage: res.QRCodeImage,
+        qrUrl: res.QRCodeUrl,
+        driverName,
+        mobileNumber: mobile,
+        truckRegistration: truck,
+      });
       setDriverName(''); setMobile(''); setTruck('');
       onOpenChange(false);
     } catch (err: unknown) {
