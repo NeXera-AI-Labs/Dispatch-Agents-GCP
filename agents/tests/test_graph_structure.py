@@ -14,7 +14,7 @@ def test_agent_state_has_messages_only():
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 def _make_fake_llm():

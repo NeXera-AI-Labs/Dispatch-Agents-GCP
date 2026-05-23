@@ -1,5 +1,5 @@
 import httpx
-from urllib.parse import urlencode, quote
+from urllib.parse import quote
 from config import settings
 
 

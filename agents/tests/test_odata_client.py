@@ -1,4 +1,3 @@
-import pytest
 import respx
 import httpx
 from unittest.mock import patch

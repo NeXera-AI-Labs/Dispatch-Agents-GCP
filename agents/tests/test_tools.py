@@ -1,6 +1,4 @@
 from tools.driver_tools import (
-    list_drivers,
-    list_assignments,
     get_driver_status,
     get_live_location,
     assign_driver,
@@ -31,8 +29,8 @@ def test_driver_tools_have_guidance():
     assert "list_assignments" in get_live_location.description.lower() or "UUID" in get_live_location.description
 
 
-from tools.delivery_tools import get_delivery_items, get_delivery_route
-from tools.route_tools import get_route_steps, get_route_for_delivery
+from tools.delivery_tools import get_delivery_items
+from tools.route_tools import get_route_steps
 
 
 def test_delivery_tools_have_guidance():

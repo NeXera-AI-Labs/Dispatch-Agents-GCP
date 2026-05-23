@@ -30,7 +30,12 @@ dist/
 .claude/
 .playwright-mcp/
 .langgraph_api/
+.superpowers/
+*.code-workspace
 
 # Test reports
 test-results/
 playwright-report/
+
+# Screenshots at repo root (Playwright/manual)
+/*.png
