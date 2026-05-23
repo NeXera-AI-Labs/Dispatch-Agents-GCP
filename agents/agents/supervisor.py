@@ -57,25 +57,33 @@ def route_message(state: SupervisorState) -> str:
     return "delivery"
 
 
-def _user_messages(state: SupervisorState) -> list:
-    return [m for m in state["messages"] if m.type == "human"]
+def _latest_human_message(state: SupervisorState) -> list:
+    """Return only the most recent human message.
+
+    Subagents are stateless within a turn — passing the full conversation
+    history causes them to concatenate prior queries (e.g. asking "8000003"
+    after "status of 8000001" produced a hallucinated "80000018000003").
+    Conversation memory lives at the supervisor level via MemorySaver, not
+    inside subagent invocations.
+    """
+    humans = [m for m in state["messages"] if m.type == "human"]
+    if humans:
+        return [humans[-1]]
+    return state["messages"][:1]
 
 
 def run_delivery(state: SupervisorState) -> dict:
-    msgs = _user_messages(state) or state["messages"][:1]
-    result = _delivery_agent.invoke({"messages": msgs})
+    result = _delivery_agent.invoke({"messages": _latest_human_message(state)})
     return {"messages": result["messages"]}
 
 
 def run_driver(state: SupervisorState) -> dict:
-    msgs = _user_messages(state) or state["messages"][:1]
-    result = _driver_agent.invoke({"messages": msgs})
+    result = _driver_agent.invoke({"messages": _latest_human_message(state)})
     return {"messages": result["messages"]}
 
 
 def run_route(state: SupervisorState) -> dict:
-    msgs = _user_messages(state) or state["messages"][:1]
-    result = _route_agent.invoke({"messages": msgs})
+    result = _route_agent.invoke({"messages": _latest_human_message(state)})
     return {"messages": result["messages"]}
 
 

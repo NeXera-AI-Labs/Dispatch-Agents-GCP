@@ -51,7 +51,6 @@ export interface Warehouse {
 }
 
 export interface TenantSettings {
-  gemini_api_key?: string;
   teams_webhook_url?: string;
   google_maps_key?: string;
 }

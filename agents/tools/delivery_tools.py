@@ -5,6 +5,17 @@ from tools.odata_client import ODataClient
 _client = ODataClient()
 
 
+def _normalize_delivery_doc(doc: str) -> str:
+    """SAP DeliveryDocument is an 8-char zero-padded numeric string. Users often
+    type "8000003" when they mean "80000003" — pad to 8 digits if it's purely numeric."""
+    if not doc:
+        return doc
+    s = str(doc).strip()
+    if s.isdigit() and len(s) < 8:
+        return s.zfill(8)
+    return s
+
+
 @tool
 def list_open_deliveries() -> str:
     """List all open outbound deliveries from EWM."""
@@ -36,6 +47,7 @@ def list_unassigned_deliveries() -> str:
 @tool
 def get_delivery_items(delivery_doc: str) -> str:
     """Get line items for a specific delivery. Pass the DeliveryDocument number from list_open_deliveries()."""
+    delivery_doc = _normalize_delivery_doc(delivery_doc)
     data = _client.post("/odata/v4/ewm/getDeliveryItems", {"deliveryDoc": delivery_doc})
     items = data.get("value", [])
     if not items:
@@ -47,6 +59,7 @@ def get_delivery_items(delivery_doc: str) -> str:
 @tool
 def get_delivery_route(delivery_doc: str) -> str:
     """Fetch Google Maps route for a delivery. Pass the DeliveryDocument number from list_open_deliveries()."""
+    delivery_doc = _normalize_delivery_doc(delivery_doc)
     try:
         data = _client.post("/odata/v4/ewm/getDeliveryRoute", {"deliveryDoc": delivery_doc})
     except Exception as e:
@@ -60,6 +73,7 @@ def get_delivery_route(delivery_doc: str) -> str:
 def get_delivery_assignment(delivery_doc: str) -> str:
     """Get driver assignment and tracking status for a delivery document number.
     Returns driver name, mobile, truck, assignment status (ASSIGNED/IN_TRANSIT/DELIVERED), and last GPS."""
+    delivery_doc = _normalize_delivery_doc(delivery_doc)
     try:
         data = _client.get(
             "/odata/v4/tracking/DriverAssignment",

@@ -3,28 +3,31 @@ substitutions:
   _PROJECT: agentic-dispatch
   _REPO: us-central1-docker.pkg.dev/agentic-dispatch/cloud-run-source-deploy
   _CAP_URL: https://cap-srv-1069189829983.us-central1.run.app
-  _GOOGLE_MAPS_KEY: ""
+
+# Build-time secrets (Next.js inlines NEXT_PUBLIC_* at build time, not runtime).
+availableSecrets:
+  secretManager:
+    - versionName: projects/$_PROJECT/secrets/GOOGLE_MAPS_API_KEY/versions/latest
+      env: GOOGLE_MAPS_API_KEY
 
 steps:
 
   # 1. Build frontend and agents images in parallel
   - id: build-frontend
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    secretEnv: ['GOOGLE_MAPS_API_KEY']
     args:
-      - build
-      - -f
-      - frontend/nexera-dispatch/Dockerfile
-      - -t
-      - $_REPO/frontend:$COMMIT_SHA
-      - -t
-      - $_REPO/frontend:latest
-      - --build-arg
-      - NEXT_PUBLIC_CAP_URL=$_CAP_URL
-      - --build-arg
-      - NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.$_REGION.run.app
-      - --build-arg
-      - NEXT_PUBLIC_GOOGLE_MAPS_KEY=$_GOOGLE_MAPS_KEY
-      - frontend/nexera-dispatch
+      - -c
+      - |
+        docker build \
+          -f frontend/nexera-dispatch/Dockerfile \
+          -t $_REPO/frontend:$COMMIT_SHA \
+          -t $_REPO/frontend:latest \
+          --build-arg NEXT_PUBLIC_CAP_URL=$_CAP_URL \
+          --build-arg NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.$_REGION.run.app \
+          --build-arg NEXT_PUBLIC_GOOGLE_MAPS_KEY="$$GOOGLE_MAPS_API_KEY" \
+          frontend/nexera-dispatch
     waitFor:
       - "-"
 
@@ -77,7 +80,7 @@ steps:
       - --port=8080
       - --add-cloudsql-instances=$_PROJECT:$_REGION:nexera-sbx-db
       - --set-env-vars=NODE_ENV=production,NEXT_PUBLIC_CAP_URL=$_CAP_URL,NEXT_PUBLIC_APP_URL=https://frontend-1069189829983.$_REGION.run.app,AGENTS_URL=https://agents-1069189829983.$_REGION.run.app
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,NEXT_PUBLIC_GOOGLE_MAPS_KEY=GOOGLE_MAPS_API_KEY:latest
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest
     waitFor:
       - push-frontend
 

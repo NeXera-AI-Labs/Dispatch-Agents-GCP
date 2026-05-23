@@ -1,0 +1,185 @@
+'use client';
+import { useEffect, useState, useCallback } from 'react';
+import { Package, UserPlus } from 'lucide-react';
+import { getDelivery, getDeliveryItems, getAssignmentByDelivery } from '@/lib/api';
+import type { Delivery, DeliveryItem, DriverAssignment } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
+import { AssignDriverDialog } from '@/components/assign-driver-dialog';
+import { DeliveryRouteCard } from '@/components/delivery-route-card';
+import { DeliveryMap } from '@/components/delivery-map';
+import { getDeliveryStatus } from '@/components/delivery-table';
+
+interface DispatchDetailPaneProps {
+  deliveryId: string;
+  warehouseAddress?: string;
+  onAssignmentChange?: (deliveryId: string, assignment: DriverAssignment | null) => void;
+}
+
+export function DispatchDetailPane({ deliveryId, warehouseAddress, onAssignmentChange }: DispatchDetailPaneProps) {
+  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [items, setItems] = useState<DeliveryItem[]>([]);
+  const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [routeSummary, setRouteSummary] = useState<{ distance: string; duration: string } | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+
+  const handleSummary = useCallback((s: { distance: string; duration: string }) => setRouteSummary(s), []);
+
+  useEffect(() => {
+    if (!deliveryId) return;
+    setLoading(true);
+    setError('');
+    setDelivery(null);
+    setItems([]);
+    setAssignment(null);
+    setRouteSummary(null);
+
+    Promise.all([
+      getDelivery(deliveryId).catch((e: Error) => { setError(e.message); return null; }),
+      getDeliveryItems(deliveryId).catch(() => [] as DeliveryItem[]),
+      getAssignmentByDelivery(deliveryId).catch(() => null),
+    ]).then(([d, i, a]) => {
+      setDelivery(d);
+      setItems(i);
+      setAssignment(a);
+    }).finally(() => setLoading(false));
+  }, [deliveryId]);
+
+  function handleNewAssignment(result: {
+    id: string;
+    qrImage: string;
+    qrUrl: string;
+    driverName: string;
+    mobileNumber: string;
+    truckRegistration: string;
+  }) {
+    // Optimistic update so the status badge flips to "On the Way" and the
+    // driver card renders immediately, without waiting for the round-trip.
+    const optimistic: DriverAssignment = {
+      ID: result.id,
+      DeliveryDocument: deliveryId,
+      DriverName: result.driverName,
+      MobileNumber: result.mobileNumber,
+      TruckRegistration: result.truckRegistration,
+      Status: 'ASSIGNED',
+      AssignedAt: new Date().toISOString(),
+      QRCodeImage: result.qrImage,
+      QRCodeUrl: result.qrUrl,
+    };
+    setAssignment(optimistic);
+    onAssignmentChange?.(deliveryId, optimistic);
+
+    // Reconcile with server-side row so we pick up the canonical AssignedAt,
+    // EstimatedDuration, etc. (overwrites the optimistic one).
+    getAssignmentByDelivery(deliveryId)
+      .then(a => {
+        if (a) {
+          setAssignment(a);
+          onAssignmentChange?.(deliveryId, a);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (loading) {
+    return <div className="p-6 text-sm text-muted-foreground">Loading delivery…</div>;
+  }
+  if (error) {
+    return <div className="p-6 text-sm text-red-400">Error: {error}</div>;
+  }
+  if (!delivery) {
+    return <div className="p-6 text-sm text-muted-foreground">Delivery not found.</div>;
+  }
+
+  const status = getDeliveryStatus(delivery, assignment ?? undefined);
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-foreground font-mono">{delivery.DeliveryDocument}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {delivery.ShipToParty ? `Ship-to ${delivery.ShipToParty}` : 'Delivery details'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <DeliveryStatusBadge status={status} />
+          {!assignment && (
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-700"
+              onClick={() => setAssignOpen(true)}
+            >
+              <UserPlus size={14} className="mr-1.5" />
+              Assign Driver
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Items */}
+      {items.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Package size={14} className="text-indigo-400" />
+            Items ({items.length})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-border/50">
+                  <th className="py-2 pr-4 font-medium">Item</th>
+                  <th className="py-2 pr-4 font-medium">Material</th>
+                  <th className="py-2 pr-4 font-medium">Qty</th>
+                  <th className="py-2 font-medium">Storage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => (
+                  <tr key={item.DeliveryDocumentItem} className="border-b border-border/30 last:border-0">
+                    <td className="py-2 pr-4 font-mono text-muted-foreground">{item.DeliveryDocumentItem}</td>
+                    <td className="py-2 pr-4 text-foreground">{item.Material ?? '—'}</td>
+                    <td className="py-2 pr-4 text-foreground">{item.ActualDeliveryQuantity} {item.DeliveryQuantityUnit}</td>
+                    <td className="py-2 text-muted-foreground">{item.StorageLocation ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Map */}
+      <DeliveryMap
+        shipToParty={delivery.ShipToParty}
+        assignmentId={assignment?.ID}
+        warehouseAddress={warehouseAddress}
+        onSummary={handleSummary}
+        height={380}
+      />
+
+      {/* Delivery Details + Driver: 2-column card */}
+      <DeliveryRouteCard
+        shipFromCode={delivery.ShippingPoint}
+        shipToCode={delivery.ShipToParty}
+        warehouseAddress={warehouseAddress}
+        routeCode={delivery.ActualDeliveryRoute}
+        deliveryDate={delivery.DeliveryDate}
+        grossWeightKg={delivery.HeaderGrossWeight}
+        itemsCount={items.length}
+        assignment={assignment}
+        routeSummary={routeSummary}
+      />
+
+      <AssignDriverDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        deliveryDoc={deliveryId}
+        onAssigned={handleNewAssignment}
+      />
+    </div>
+  );
+}

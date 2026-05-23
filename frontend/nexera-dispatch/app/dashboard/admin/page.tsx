@@ -101,7 +101,7 @@ function ConnectionsTab() {
 // ── Settings tab ──────────────────────────────────────────────────────
 
 function SettingsTab() {
-  const [settings, setSettings] = useState<TenantSettings>({ gemini_api_key: '', teams_webhook_url: '', google_maps_key: '' });
+  const [settings, setSettings] = useState<TenantSettings>({ teams_webhook_url: '', google_maps_key: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -109,7 +109,6 @@ function SettingsTab() {
 
   useEffect(() => {
     getSettings().then(s => setSettings({
-      gemini_api_key: s.gemini_api_key ?? '',
       teams_webhook_url: s.teams_webhook_url ?? '',
       google_maps_key: s.google_maps_key ?? '',
     })).catch(console.error).finally(() => setLoading(false));
@@ -130,23 +129,6 @@ function SettingsTab() {
 
   return (
     <div className="space-y-8 max-w-xl">
-      {/* AI */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">AI — Gemini</h3>
-        <p className="text-xs text-muted-foreground mb-4">Powers the AI dispatch assistant. Each customer uses their own key.</p>
-        <MaskedInput
-          label="Gemini API Key"
-          id="gemini-key"
-          value={settings.gemini_api_key ?? ''}
-          onChange={v => setSettings(s => ({ ...s, gemini_api_key: v }))}
-          placeholder="AIza..."
-          helpUrl="https://aistudio.google.com/app/apikey"
-          helpText="Get a free key from Google AI Studio. Used for AI chat and dispatch agent."
-        />
-      </div>
-
-      <div className="border-t border-border/50" />
-
       {/* Notifications */}
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-1">Notifications — Microsoft Teams</h3>
