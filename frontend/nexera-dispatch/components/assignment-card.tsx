@@ -1,10 +1,13 @@
 'use client';
 import { CheckCircle2, Truck, Clock, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { DriverAssignment } from '@/lib/types';
+import type { DriverAssignment, RouteDirections } from '@/lib/types';
 
 interface AssignmentCardProps {
   assignment: DriverAssignment;
+  // Fallback ETA source — used when EstimatedDuration is NULL on the assignment row
+  // (e.g. assignment created before the directions step ran).
+  route?: RouteDirections | null;
 }
 
 function formatAssignedAt(iso?: string) {
@@ -17,9 +20,12 @@ function formatAssignedAt(iso?: string) {
   });
 }
 
-export function AssignmentCard({ assignment }: AssignmentCardProps) {
+export function AssignmentCard({ assignment, route }: AssignmentCardProps) {
   const qrImage = assignment.QRCodeImage;
   const qrUrl = assignment.QRCodeUrl;
+
+  const etaDuration = assignment.EstimatedDuration || route?.duration;
+  const etaDistance = assignment.EstimatedDistance || route?.distance;
 
   return (
     <div className="space-y-4">
@@ -48,13 +54,13 @@ export function AssignmentCard({ assignment }: AssignmentCardProps) {
           <span className="text-muted-foreground">Assigned</span>
           <span className="text-foreground ml-auto">{formatAssignedAt(assignment.AssignedAt)}</span>
         </div>
-        {assignment.EstimatedDuration && (
+        {etaDuration && (
           <div className="flex items-center gap-2">
             <MapPin size={12} className="text-indigo-400 shrink-0" />
             <span className="text-muted-foreground">ETA</span>
             <span className="text-foreground ml-auto">
-              {assignment.EstimatedDuration}
-              {assignment.EstimatedDistance ? ` · ${assignment.EstimatedDistance}` : ''}
+              {etaDuration}
+              {etaDistance ? ` · ${etaDistance}` : ''}
             </span>
           </div>
         )}

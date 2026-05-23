@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Package } from 'lucide-react';
 import { getDelivery, getDeliveryItems, listWarehouses, getAssignmentByDelivery } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import { DeliveryMap } from '@/components/delivery-map';
-import type { Delivery, DeliveryItem, Warehouse, DriverAssignment } from '@/lib/types';
+import type { Delivery, DeliveryItem, Warehouse, DriverAssignment, RouteDirections } from '@/lib/types';
 import { Navbar } from '@/components/navbar';
 import { DeliveryStatusBadge } from '@/components/delivery-status-badge';
 import { DriverAssignForm } from '@/components/driver-assign-form';
@@ -33,6 +33,10 @@ export default function DeliveryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
+  const [route, setRoute] = useState<RouteDirections | null>(null);
+
+  // Stable callback so DeliveryMap's useEffect deps don't churn on every render
+  const handleRoute = useCallback((r: RouteDirections) => setRoute(r), []);
 
   useEffect(() => {
     // SSR-safe: read user from localStorage only on client
@@ -144,7 +148,7 @@ export default function DeliveryDetailPage() {
             {/* Right: existing assignment card OR assign form */}
             <div className="bg-card border border-border rounded-xl p-5">
               {assignment ? (
-                <AssignmentCard assignment={assignment} />
+                <AssignmentCard assignment={assignment} route={route} />
               ) : (
                 <DriverAssignForm
                   deliveryDoc={deliveryId}
@@ -160,6 +164,7 @@ export default function DeliveryDetailPage() {
             shipToParty={delivery.ShipToParty}
             assignmentId={assignment?.ID}
             warehouseAddress={warehouseAddress}
+            onRoute={handleRoute}
           />
         )}
       </main>

@@ -10,10 +10,8 @@ let gmapsPromise: Promise<void> | null = null;
 function loadGoogleMaps(key: string): Promise<void> {
   if (gmapsPromise) return gmapsPromise;
   gmapsPromise = new Promise((resolve, reject) => {
-    // If already loaded (e.g. navigated back), resolve immediately
     if (window.google?.maps) { resolve(); return; }
 
-    // Remove ALL stale Maps script tags (from hot-reload iterations)
     document.querySelectorAll('script[src*="maps.googleapis.com"]').forEach(s => s.remove());
 
     const callbackName = '__gmapsInit' + Date.now();
@@ -24,7 +22,8 @@ function loadGoogleMaps(key: string): Promise<void> {
 
     const script = document.createElement('script');
     script.id = 'gmaps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=geometry&callback=${callbackName}&loading=async`;
+    // v=weekly + marker + geometry libraries — required for AdvancedMarkerElement and polyline decoding
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry,marker&callback=${callbackName}&loading=async`;
     script.async = true;
     script.onerror = () => { gmapsPromise = null; reject(new Error('Maps load failed')); };
     document.head.appendChild(script);
@@ -36,6 +35,7 @@ interface DeliveryMapProps {
   shipToParty?: string;
   assignmentId?: string;
   warehouseAddress?: string;
+  onRoute?: (route: RouteDirections) => void;
 }
 
 declare global {
@@ -43,10 +43,17 @@ declare global {
   interface Window { google: any; }
 }
 
-export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: DeliveryMapProps) {
+// Map ID required for AdvancedMarkerElement + cloud-based map styling.
+// "DEMO_MAP_ID" is Google's public demo ID — fine for dev. Replace with a project-owned ID
+// from https://console.cloud.google.com/google/maps-apis/studio/maps for production styling.
+const MAP_ID = 'DEMO_MAP_ID';
+
+export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRoute }: DeliveryMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapInstanceRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const driverMarkerRef = useRef<any>(null);
   const routeDrawnRef = useRef(false);
   const [route, setRoute] = useState<RouteDirections | null>(null);
   const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
@@ -55,9 +62,6 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
   const [error, setError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load Google Maps — try the build-time public env first, then fall back
-  // to tenant_settings.google_maps_key from /api/settings. The fallback keeps
-  // the demo working even if a build forgot to bake the key into the bundle.
   useEffect(() => {
     let cancelled = false;
     const buildKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
@@ -77,16 +81,14 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch route directions — cap-srv resolves SAP codes to real addresses
   useEffect(() => {
     const origin = warehouseAddress || 'Hamburg, Germany';
     if (!shipToParty) return;
     getDirections(origin, shipToParty)
-      .then(setRoute)
+      .then(r => { setRoute(r); onRoute?.(r); })
       .catch(() => {});
-  }, [shipToParty, warehouseAddress]);
+  }, [shipToParty, warehouseAddress, onRoute]);
 
-  // Poll driver assignment every 30s
   const fetchAssignment = useCallback(() => {
     if (!assignmentId) return;
     getAssignment(assignmentId).then(setAssignment).catch(() => {});
@@ -103,19 +105,26 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
   useEffect(() => {
     if (!mapReady || !mapRef.current || mapInstanceRef.current) return;
     mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+      mapId: MAP_ID,
       mapTypeId: 'roadmap',
       zoom: 5,
       center: { lat: 51.1657, lng: 10.4515 },
       zoomControl: true,
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: '#1d2c3f' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3f5' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a2a3f' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d4a6e' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1f33' }] },
-      ],
+      // Note: when mapId is set, JS-side `styles` are ignored — styling comes from the cloud-based map.
     });
   }, [mapReady]);
+
+  // Build a coloured pin element for AdvancedMarkerElement
+  const buildPin = useCallback((color: string, glyph: string, scale = 1) => {
+    if (!window.google?.maps?.marker?.PinElement) return undefined;
+    return new window.google.maps.marker.PinElement({
+      background: color,
+      borderColor: '#ffffff',
+      glyphColor: '#ffffff',
+      glyph,
+      scale,
+    }).element;
+  }, []);
 
   // Draw route once map and route are both ready
   useEffect(() => {
@@ -128,45 +137,85 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: Del
       { lat: route.bounds_northeast_lat, lng: route.bounds_northeast_lng }
     ));
 
+    // Origin/destination — prefer step-derived, fall back to leg.start_location/end_location from raw API.
+    let originPt: { lat: number; lng: number } | null = null;
+    let destPt:   { lat: number; lng: number } | null = null;
+
+    if (route.steps && route.steps.length > 0) {
+      originPt = { lat: route.steps[0].startLat, lng: route.steps[0].startLng };
+      const last = route.steps[route.steps.length - 1];
+      destPt = { lat: last.endLat, lng: last.endLng };
+    }
+
+    let polylinePath: { lat: number; lng: number }[] | null = null;
     try {
       const raw = JSON.parse(route.rawData);
-      const encoded = raw.routes?.[0]?.overview_polyline?.points;
+      const apiRoute = raw.routes?.[0] ?? raw; // some payloads store the route, others wrap it
+      const leg = apiRoute.legs?.[0];
+
+      if (!originPt && leg?.start_location) originPt = { lat: leg.start_location.lat, lng: leg.start_location.lng };
+      if (!destPt   && leg?.end_location)   destPt   = { lat: leg.end_location.lat,   lng: leg.end_location.lng   };
+
+      const encoded = apiRoute.overview_polyline?.points;
       if (encoded && window.google.maps.geometry) {
-        new window.google.maps.Polyline({
-          path: window.google.maps.geometry.encoding.decodePath(encoded),
-          geodesic: true, strokeColor: '#6366f1', strokeOpacity: 0.9, strokeWeight: 4, map,
-        });
+        polylinePath = window.google.maps.geometry.encoding.decodePath(encoded)
+          .map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
       }
-    } catch { /* no polyline */ }
+    } catch { /* fall through */ }
 
-    if (route.steps.length > 0) {
-      new window.google.maps.Marker({
-        position: { lat: route.steps[0].startLat, lng: route.steps[0].startLng },
-        map, title: 'Origin',
-        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#4ade80', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+    if (polylinePath) {
+      new window.google.maps.Polyline({
+        path: polylinePath,
+        geodesic: true, strokeColor: '#6366f1', strokeOpacity: 0.9, strokeWeight: 4, map,
       });
     }
-    const last = route.steps[route.steps.length - 1];
-    if (last) {
-      new window.google.maps.Marker({
-        position: { lat: last.endLat, lng: last.endLng },
-        map, title: 'Destination',
-        icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#f43f5e', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-      });
-    }
-  }, [mapReady, route]);
 
-  // Update driver pin
+    const AdvMarker = window.google.maps.marker?.AdvancedMarkerElement;
+
+    if (originPt) {
+      if (AdvMarker) {
+        new AdvMarker({ position: originPt, map, title: 'Origin (Warehouse)', content: buildPin('#22c55e', 'A', 1.1) });
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        new (window.google.maps as any).Marker({ position: originPt, map, title: 'Origin' });
+      }
+    }
+    if (destPt) {
+      if (AdvMarker) {
+        new AdvMarker({ position: destPt, map, title: 'Destination (Ship-to)', content: buildPin('#f43f5e', 'B', 1.1) });
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        new (window.google.maps as any).Marker({ position: destPt, map, title: 'Destination' });
+      }
+    }
+  }, [mapReady, route, buildPin]);
+
+  // Driver pin (live position) — recreated as AdvancedMarkerElement
   useEffect(() => {
     if (!mapInstanceRef.current || !assignment?.CurrentLat || !assignment?.CurrentLng) return;
     const pos = { lat: assignment.CurrentLat, lng: assignment.CurrentLng };
-    if (markerRef.current) {
-      markerRef.current.setPosition(pos);
-    } else {
-      markerRef.current = new window.google.maps.Marker({
+    const AdvMarker = window.google.maps.marker?.AdvancedMarkerElement;
+
+    if (driverMarkerRef.current) {
+      driverMarkerRef.current.position = pos;
+      return;
+    }
+
+    if (AdvMarker) {
+      // Truck emoji glyph keeps it readable without external icon assets
+      const truckEl = document.createElement('div');
+      truckEl.style.cssText = 'font-size: 24px; line-height: 1; transform: translateY(-12px);';
+      truckEl.textContent = '🚚';
+      driverMarkerRef.current = new AdvMarker({
         position: pos, map: mapInstanceRef.current,
         title: assignment.DriverName || 'Driver',
-        icon: { url: 'https://maps.google.com/mapfiles/ms/icons/truck.png', scaledSize: new window.google.maps.Size(32, 32) },
+        content: truckEl,
+      });
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      driverMarkerRef.current = new (window.google.maps as any).Marker({
+        position: pos, map: mapInstanceRef.current,
+        title: assignment.DriverName || 'Driver',
       });
     }
   }, [assignment]);
