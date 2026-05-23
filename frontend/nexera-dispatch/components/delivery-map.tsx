@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Navigation } from 'lucide-react';
-import { getDirections, getAssignment, getSettings } from '@/lib/api';
-import type { RouteDirections, DriverAssignment } from '@/lib/types';
+import { Navigation } from 'lucide-react';
+import { getAssignment, getSettings } from '@/lib/api';
+import type { DriverAssignment } from '@/lib/types';
 
 // Module-level promise — one load per page lifecycle, survives Strict Mode
 let gmapsPromise: Promise<void> | null = null;
@@ -22,8 +22,8 @@ function loadGoogleMaps(key: string): Promise<void> {
 
     const script = document.createElement('script');
     script.id = 'gmaps-script';
-    // v=weekly + marker + geometry libraries — required for AdvancedMarkerElement and polyline decoding
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=geometry,marker&callback=${callbackName}&loading=async`;
+    // v=weekly + marker library for AdvancedMarkerElement (driver pin)
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=marker&callback=${callbackName}&loading=async`;
     script.async = true;
     script.onerror = () => { gmapsPromise = null; reject(new Error('Maps load failed')); };
     document.head.appendChild(script);
@@ -35,7 +35,8 @@ interface DeliveryMapProps {
   shipToParty?: string;
   assignmentId?: string;
   warehouseAddress?: string;
-  onRoute?: (route: RouteDirections) => void;
+  onSummary?: (summary: { distance: string; duration: string }) => void;
+  height?: number;
 }
 
 declare global {
@@ -43,52 +44,112 @@ declare global {
   interface Window { google: any; }
 }
 
-// Map ID required for AdvancedMarkerElement + cloud-based map styling.
-// "DEMO_MAP_ID" is Google's public demo ID — fine for dev. Replace with a project-owned ID
-// from https://console.cloud.google.com/google/maps-apis/studio/maps for production styling.
+// Map ID required for AdvancedMarkerElement. DEMO_MAP_ID uses Google's default light style,
+// which is what the user asked for (matches native maps.google.com look).
 const MAP_ID = 'DEMO_MAP_ID';
 
-export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRoute }: DeliveryMapProps) {
+// SAP sandbox ship-to codes don't geocode — map them to real addresses for the demo.
+// Mirrors the same mapping in cap-srv/srv/gmap_srv.js so behaviour is consistent
+// whether the route comes from cap-srv or DirectionsService client-side.
+const ADDRESS_MAP: Record<string, string> = {
+  '1710': 'Heidenkampsweg 58, Hamburg, Germany',
+  '17100001': 'Dammtorstraße 1, Hamburg, Germany',
+  '17100003': 'Mönckebergstraße 7, Hamburg, Germany',
+  '17100006': 'Spitalerstraße 10, Hamburg, Germany',
+};
+const resolveAddress = (s?: string) => (s && ADDRESS_MAP[s]) || s || '';
+
+export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onSummary, height = 420 }: DeliveryMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const directionsRendererRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const driverMarkerRef = useRef<any>(null);
-  const routeDrawnRef = useRef(false);
-  const [route, setRoute] = useState<RouteDirections | null>(null);
   const [assignment, setAssignment] = useState<DriverAssignment | null>(null);
-  const [directionsOpen, setDirectionsOpen] = useState(false);
+  const [summary, setSummary] = useState<{ distance: string; duration: string } | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // 1. Load Google Maps (build-time key first, then tenant settings fallback)
   useEffect(() => {
     let cancelled = false;
     const buildKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
     const start = (key?: string) => {
-      if (!key) { setError(true); return; }
+      if (!key) { setError('Google Maps API key not configured'); return; }
       loadGoogleMaps(key)
         .then(() => { if (!cancelled) setMapReady(true); })
-        .catch(() => { if (!cancelled) setError(true); });
+        .catch(() => { if (!cancelled) setError('Failed to load Google Maps'); });
     };
     if (buildKey) {
       start(buildKey);
     } else {
       getSettings()
         .then(s => { if (!cancelled) start(s.google_maps_key); })
-        .catch(() => { if (!cancelled) setError(true); });
+        .catch(() => { if (!cancelled) setError('Could not load Maps key from settings'); });
     }
     return () => { cancelled = true; };
   }, []);
 
+  // 2. Initialize map once Google Maps is ready
   useEffect(() => {
-    const origin = warehouseAddress || 'Hamburg, Germany';
-    if (!shipToParty) return;
-    getDirections(origin, shipToParty)
-      .then(r => { setRoute(r); onRoute?.(r); })
-      .catch(() => {});
-  }, [shipToParty, warehouseAddress, onRoute]);
+    if (!mapReady || !mapRef.current || mapInstanceRef.current) return;
+    mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+      mapId: MAP_ID,
+      mapTypeId: 'roadmap',
+      zoom: 5,
+      center: { lat: 51.1657, lng: 10.4515 },
+      zoomControl: true,
+      streetViewControl: false,
+      fullscreenControl: true,
+      mapTypeControl: false,
+    });
+    // DirectionsRenderer draws the canonical Google Maps route — dual-tone polyline,
+    // A/B markers with addresses, distance/duration balloons. Same look as maps.google.com.
+    directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+      map: mapInstanceRef.current,
+      suppressMarkers: false,
+      polylineOptions: {
+        strokeColor: '#4285F4', // Google Maps blue
+        strokeWeight: 6,
+        strokeOpacity: 0.9,
+      },
+    });
+  }, [mapReady]);
 
+  // 3. Fetch & render directions whenever shipToParty or warehouseAddress changes
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !shipToParty) return;
+    const origin = warehouseAddress || 'Hamburg, Germany';
+    const destination = resolveAddress(shipToParty);
+
+    const ds = new window.google.maps.DirectionsService();
+    ds.route(
+      {
+        origin,
+        destination,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (result: any, status: string) => {
+        if (status !== 'OK' || !result) {
+          setError(`No route found (${status})`);
+          return;
+        }
+        directionsRendererRef.current?.setDirections(result);
+        const leg = result.routes?.[0]?.legs?.[0];
+        if (leg?.distance?.text && leg?.duration?.text) {
+          const s = { distance: leg.distance.text, duration: leg.duration.text };
+          setSummary(s);
+          onSummary?.(s);
+        }
+      }
+    );
+  }, [mapReady, shipToParty, warehouseAddress, onSummary]);
+
+  // 4. Poll driver assignment every 30s for live GPS pin
   const fetchAssignment = useCallback(() => {
     if (!assignmentId) return;
     getAssignment(assignmentId).then(setAssignment).catch(() => {});
@@ -101,96 +162,7 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRou
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [assignmentId, fetchAssignment]);
 
-  // Initialize map once Google Maps is ready
-  useEffect(() => {
-    if (!mapReady || !mapRef.current || mapInstanceRef.current) return;
-    mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-      mapId: MAP_ID,
-      mapTypeId: 'roadmap',
-      zoom: 5,
-      center: { lat: 51.1657, lng: 10.4515 },
-      zoomControl: true,
-      // Note: when mapId is set, JS-side `styles` are ignored — styling comes from the cloud-based map.
-    });
-  }, [mapReady]);
-
-  // Build a coloured pin element for AdvancedMarkerElement
-  const buildPin = useCallback((color: string, glyph: string, scale = 1) => {
-    if (!window.google?.maps?.marker?.PinElement) return undefined;
-    return new window.google.maps.marker.PinElement({
-      background: color,
-      borderColor: '#ffffff',
-      glyphColor: '#ffffff',
-      glyph,
-      scale,
-    }).element;
-  }, []);
-
-  // Draw route once map and route are both ready
-  useEffect(() => {
-    if (!mapInstanceRef.current || !route || routeDrawnRef.current) return;
-    routeDrawnRef.current = true;
-    const map = mapInstanceRef.current;
-
-    map.fitBounds(new window.google.maps.LatLngBounds(
-      { lat: route.bounds_southwest_lat, lng: route.bounds_southwest_lng },
-      { lat: route.bounds_northeast_lat, lng: route.bounds_northeast_lng }
-    ));
-
-    // Origin/destination — prefer step-derived, fall back to leg.start_location/end_location from raw API.
-    let originPt: { lat: number; lng: number } | null = null;
-    let destPt:   { lat: number; lng: number } | null = null;
-
-    if (route.steps && route.steps.length > 0) {
-      originPt = { lat: route.steps[0].startLat, lng: route.steps[0].startLng };
-      const last = route.steps[route.steps.length - 1];
-      destPt = { lat: last.endLat, lng: last.endLng };
-    }
-
-    let polylinePath: { lat: number; lng: number }[] | null = null;
-    try {
-      const raw = JSON.parse(route.rawData);
-      const apiRoute = raw.routes?.[0] ?? raw; // some payloads store the route, others wrap it
-      const leg = apiRoute.legs?.[0];
-
-      if (!originPt && leg?.start_location) originPt = { lat: leg.start_location.lat, lng: leg.start_location.lng };
-      if (!destPt   && leg?.end_location)   destPt   = { lat: leg.end_location.lat,   lng: leg.end_location.lng   };
-
-      const encoded = apiRoute.overview_polyline?.points;
-      if (encoded && window.google.maps.geometry) {
-        polylinePath = window.google.maps.geometry.encoding.decodePath(encoded)
-          .map((p: google.maps.LatLng) => ({ lat: p.lat(), lng: p.lng() }));
-      }
-    } catch { /* fall through */ }
-
-    if (polylinePath) {
-      new window.google.maps.Polyline({
-        path: polylinePath,
-        geodesic: true, strokeColor: '#6366f1', strokeOpacity: 0.9, strokeWeight: 4, map,
-      });
-    }
-
-    const AdvMarker = window.google.maps.marker?.AdvancedMarkerElement;
-
-    if (originPt) {
-      if (AdvMarker) {
-        new AdvMarker({ position: originPt, map, title: 'Origin (Warehouse)', content: buildPin('#22c55e', 'A', 1.1) });
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        new (window.google.maps as any).Marker({ position: originPt, map, title: 'Origin' });
-      }
-    }
-    if (destPt) {
-      if (AdvMarker) {
-        new AdvMarker({ position: destPt, map, title: 'Destination (Ship-to)', content: buildPin('#f43f5e', 'B', 1.1) });
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        new (window.google.maps as any).Marker({ position: destPt, map, title: 'Destination' });
-      }
-    }
-  }, [mapReady, route, buildPin]);
-
-  // Driver pin (live position) — recreated as AdvancedMarkerElement
+  // 5. Render/update driver pin (truck emoji) — sits ON TOP of DirectionsRenderer markers
   useEffect(() => {
     if (!mapInstanceRef.current || !assignment?.CurrentLat || !assignment?.CurrentLng) return;
     const pos = { lat: assignment.CurrentLat, lng: assignment.CurrentLng };
@@ -202,20 +174,14 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRou
     }
 
     if (AdvMarker) {
-      // Truck emoji glyph keeps it readable without external icon assets
       const truckEl = document.createElement('div');
-      truckEl.style.cssText = 'font-size: 24px; line-height: 1; transform: translateY(-12px);';
+      truckEl.style.cssText = 'font-size: 28px; line-height: 1; transform: translateY(-14px); filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));';
       truckEl.textContent = '🚚';
       driverMarkerRef.current = new AdvMarker({
         position: pos, map: mapInstanceRef.current,
         title: assignment.DriverName || 'Driver',
         content: truckEl,
-      });
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      driverMarkerRef.current = new (window.google.maps as any).Marker({
-        position: pos, map: mapInstanceRef.current,
-        title: assignment.DriverName || 'Driver',
+        zIndex: 9999,
       });
     }
   }, [assignment]);
@@ -229,8 +195,8 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRou
   if (error) {
     return (
       <div className="bg-card border border-border rounded-xl p-5 text-xs text-muted-foreground">
-        Map unavailable — Google Maps key not configured. Set it in Admin → Settings,
-        or rebuild the frontend with <code className="font-mono">NEXT_PUBLIC_GOOGLE_MAPS_KEY</code>.
+        {error}. Configure it under Admin → Settings, or rebuild with{' '}
+        <code className="font-mono">NEXT_PUBLIC_GOOGLE_MAPS_KEY</code>.
       </div>
     );
   }
@@ -241,7 +207,7 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRou
         <div className="flex items-center gap-2">
           <Navigation size={14} className="text-indigo-400" />
           <span className="text-sm font-semibold text-foreground">Route Map</span>
-          {route && <span className="text-xs text-muted-foreground ml-2">{route.distance} · {route.duration}</span>}
+          {summary && <span className="text-xs text-muted-foreground ml-2">{summary.distance} · {summary.duration}</span>}
         </div>
         {assignment && (
           <div className="flex items-center gap-2">
@@ -257,36 +223,13 @@ export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress, onRou
         )}
       </div>
 
-      <div ref={mapRef} className="w-full" style={{ height: 320 }}>
+      <div ref={mapRef} className="w-full" style={{ height }}>
         {!mapReady && (
           <div className="w-full h-full flex items-center justify-center bg-slate-900">
             <span className="text-sm text-muted-foreground">Loading map…</span>
           </div>
         )}
       </div>
-
-      {route && route.steps.length > 0 && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setDirectionsOpen(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <span>Turn-by-turn directions ({route.steps.length} steps)</span>
-            {directionsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-          {directionsOpen && (
-            <div className="px-5 pb-4 space-y-2 max-h-64 overflow-y-auto">
-              {route.steps.map(step => (
-                <div key={step.stepNumber} className="flex gap-3 text-xs">
-                  <span className="text-muted-foreground w-5 shrink-0">{step.stepNumber}.</span>
-                  <span className="text-foreground flex-1">{step.instruction}</span>
-                  <span className="text-muted-foreground shrink-0">{step.distance}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,13 +1,13 @@
 'use client';
 import { CheckCircle2, Truck, Clock, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { DriverAssignment, RouteDirections } from '@/lib/types';
+import type { DriverAssignment } from '@/lib/types';
 
 interface AssignmentCardProps {
   assignment: DriverAssignment;
   // Fallback ETA source — used when EstimatedDuration is NULL on the assignment row
   // (e.g. assignment created before the directions step ran).
-  route?: RouteDirections | null;
+  routeSummary?: { distance: string; duration: string } | null;
 }
 
 function formatAssignedAt(iso?: string) {
@@ -20,12 +20,12 @@ function formatAssignedAt(iso?: string) {
   });
 }
 
-export function AssignmentCard({ assignment, route }: AssignmentCardProps) {
+export function AssignmentCard({ assignment, routeSummary }: AssignmentCardProps) {
   const qrImage = assignment.QRCodeImage;
   const qrUrl = assignment.QRCodeUrl;
 
-  const etaDuration = assignment.EstimatedDuration || route?.duration;
-  const etaDistance = assignment.EstimatedDistance || route?.distance;
+  const etaDuration = assignment.EstimatedDuration || routeSummary?.duration;
+  const etaDistance = assignment.EstimatedDistance || routeSummary?.distance;
 
   return (
     <div className="space-y-4">
