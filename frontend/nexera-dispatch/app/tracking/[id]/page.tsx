@@ -194,14 +194,14 @@ export default function DriverTrackingPage() {
             <Package size={14} className="text-indigo-400" />
             <h2 className="text-sm font-semibold">Delivery Details</h2>
           </div>
-          {[
+          {([
             ['Driver', assignment.DriverName],
             ['Mobile', assignment.MobileNumber],
             ['Truck', assignment.TruckRegistration],
             ['Assigned At', new Date(assignment.AssignedAt).toLocaleString()],
-            assignment.EstimatedDistance && ['Est. Distance', assignment.EstimatedDistance],
-            assignment.EstimatedDuration && ['Est. Duration', assignment.EstimatedDuration],
-          ].filter(Boolean).map(([label, value]) => (
+            assignment.EstimatedDistance ? ['Est. Distance', assignment.EstimatedDistance] : null,
+            assignment.EstimatedDuration ? ['Est. Duration', assignment.EstimatedDuration] : null,
+          ].filter(Boolean) as [string, string][]).map(([label, value]) => (
             <div key={label as string} className="flex justify-between text-xs border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
               <span className="text-slate-400">{label}</span>
               <span className="text-slate-200 font-medium">{value}</span>

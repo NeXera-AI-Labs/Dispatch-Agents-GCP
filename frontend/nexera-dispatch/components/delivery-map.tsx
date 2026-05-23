@@ -17,8 +17,8 @@ function loadGoogleMaps(key: string): Promise<void> {
     document.querySelectorAll('script[src*="maps.googleapis.com"]').forEach(s => s.remove());
 
     const callbackName = '__gmapsInit' + Date.now();
-    (window as Record<string, unknown>)[callbackName] = () => {
-      delete (window as Record<string, unknown>)[callbackName];
+    (window as unknown as Record<string, unknown>)[callbackName] = () => {
+      delete (window as unknown as Record<string, unknown>)[callbackName];
       resolve();
     };
 
@@ -39,7 +39,8 @@ interface DeliveryMapProps {
 }
 
 declare global {
-  interface Window { google: typeof google; }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  interface Window { google: any; }
 }
 
 export function DeliveryMap({ shipToParty, assignmentId, warehouseAddress }: DeliveryMapProps) {
