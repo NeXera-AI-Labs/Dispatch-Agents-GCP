@@ -33,6 +33,13 @@ dist/
 .superpowers/
 *.code-workspace
 
+# Internal / dev tooling (not for repo)
+CLAUDE.md
+agents/CLAUDE.md
+.benchmarks/
+agents/.benchmarks/
+agents/.ruff_cache/
+
 # Test reports
 test-results/
 playwright-report/
