@@ -38,24 +38,30 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const caller = getTokenFromRequest(request);
-  if (!caller || caller.role !== 'it_admin') return NextResponse.json({ error: 'IT Admin only' }, { status: 403 });
+  try {
+    const caller = getTokenFromRequest(request);
+    if (!caller || caller.role !== 'it_admin') return NextResponse.json({ error: 'IT Admin only' }, { status: 403 });
 
-  const body = await request.json();
-  const { name, erp_type, auth_type, base_url, api_key, username, password, token_url, client_id, client_secret } = body;
-  if (!name || !erp_type || !auth_type || !base_url) {
-    return NextResponse.json({ error: 'name, erp_type, auth_type, base_url required' }, { status: 400 });
+    const body = await request.json();
+    const { name, erp_type, auth_type, base_url, api_key, username, password, token_url, client_id, client_secret } = body;
+    if (!name || !erp_type || !auth_type || !base_url) {
+      return NextResponse.json({ error: 'name, erp_type, auth_type, base_url required' }, { status: 400 });
+    }
+
+    const connectionId = randomUUID();
+    const credentials = { auth_type, api_key, username, password, token_url, client_id, client_secret };
+    const secretRef = await storeSecret(caller.tenant_id, connectionId, credentials);
+
+    const db = getDb();
+    await db.query(
+      'INSERT INTO connections (id, tenant_id, name, erp_type, auth_type, base_url, secret_ref, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [connectionId, caller.tenant_id, name, erp_type, auth_type, base_url, secretRef, 'active']
+    );
+
+    return NextResponse.json({ connection_id: connectionId, status: 'active', message: 'Connection saved' });
+  } catch (e: unknown) {
+    console.error('POST /api/connections error:', e);
+    const msg = e instanceof Error ? e.message : 'Internal server error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  const connectionId = randomUUID();
-  const credentials = { auth_type, api_key, username, password, token_url, client_id, client_secret };
-  const secretRef = await storeSecret(caller.tenant_id, connectionId, credentials);
-
-  const db = getDb();
-  await db.query(
-    'INSERT INTO connections (id, tenant_id, name, erp_type, auth_type, base_url, secret_ref, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [connectionId, caller.tenant_id, name, erp_type, auth_type, base_url, secretRef, 'active']
-  );
-
-  return NextResponse.json({ connection_id: connectionId, status: 'active', message: 'Connection saved' });
 }
