@@ -202,7 +202,7 @@ parts.append(f'''
   <div style="display:flex;justify-content:center;margin-bottom:28px;">{logo("64px")}</div>
   <div class="btag">Agentic Powered Dispatcher</div>
   <div class="divider"></div>
-  <div class="cbadge">&#9679; Google for Startups AI Agents Challenge 2026 &mdash; Track 1: Build New Agents</div>
+  <div class="cbadge">&#9679; Google for Startups AI Agents Challenge 2026 &mdash; Track 1: Build New AI Agents</div>
   <div class="doctitle">Test Case Document &amp; Platform Walkthrough</div>
   <div class="docsub">End-to-end functional validation across all user roles and AI agent scenarios</div>
   <div class="cmeta">
@@ -678,7 +678,7 @@ parts.append('''
 parts.append(f'''
 <div style="border-top:1px solid var(--bd);padding:32px 0;margin-top:48px;text-align:center;background:var(--bg);">
  <div style="display:flex;justify-content:center;margin-bottom:12px;">{logo("36px")}</div>
- <div style="font-size:12px;color:#6b7280;">Google for Startups AI Agents Challenge 2026 &middot; Track 1: Build New Agents &middot; NeXera-AI-Labs</div>
+ <div style="font-size:12px;color:#6b7280;">Google for Startups AI Agents Challenge 2026 &middot; Track 1: Build New AI Agents &middot; NeXera-AI-Labs</div>
  <div style="font-size:11px;color:#9ca3af;margin-top:8px;">All screenshots captured from live GCP deployment &middot; project <code style="color:#6b7280">agentic-dispatch</code> &middot; region <code style="color:#6b7280">us-central1</code></div>
 </div>
 </div></body></html>''')
