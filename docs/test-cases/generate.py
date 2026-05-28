@@ -535,14 +535,19 @@ parts.append("</div></div>")
 # TC-13
 parts.append(tc_open("tc13","TC-13","Background Monitor Agent &mdash; Autonomous SLA Alerting","pass","&#10003; PASS"))
 parts.append(meta3("Autonomous (no user)","P1 &mdash; High","Agent","MonitorAgent (APScheduler)"))
-parts.append('<div class="tcd">Verify that the MonitorAgent runs autonomously on a schedule inside the agents Cloud Run service. It scans deliveries for SLA breaches (delivery date past, status &ne; DELIVERED) and fires a Microsoft Teams webhook alert with no human trigger &mdash; demonstrating true autonomous multi-agent behaviour.</div>')
+parts.append('<div class="tcd">Verify that autonomous agents run on a schedule and fire Microsoft Teams webhook alerts with no human trigger. <strong>EWM_Dispatch_Agent</strong> detects idle drivers (assigned but not moving) and batch opportunities (multiple deliveries to the same ship-to). <strong>DelveryTruck_IoT_Gmaps</strong> agent detects batching opportunities from IoT/GPS data. All alerts fired autonomously via APScheduler &mdash; demonstrating true multi-agent autonomous behaviour.</div>')
 parts.append(steps(
-    ("1","Wait for MonitorAgent scheduled tick (APScheduler, every N minutes)","Agent scans delivery table; identifies overdue deliveries autonomously","ok","PASS"),
-    ("2","MonitorAgent fires Teams webhook","Teams channel receives formatted alert with delivery doc #, ship-to, days overdue","ok","PASS"),
-    ("3","Check agents service logs in Cloud Run","APScheduler log entries confirm periodic execution; no manual trigger","ok","PASS"),
+    ("1","Wait for MonitorAgent scheduled tick (APScheduler, every N minutes)","Agent scans delivery table; identifies overdue/idle drivers autonomously","ok","PASS"),
+    ("2","Idle Driver alert fires","EWM_Dispatch_Agent posts: driver assigned but not moving for N min &mdash; delivery doc included","ok","PASS"),
+    ("3","Batch Opportunity alert fires","Agent detects multiple deliveries for same ship-to; recommends batching same driver","ok","PASS"),
+    ("4","IoT/GMaps agent alert fires","DelveryTruck_IoT_Gmaps agent posts batch opportunity across 9 deliveries for ship-to 17100001","ok","PASS"),
 ))
-parts.append(sl("Teams channel &mdash; MonitorAgent batch opportunity alert (autonomous, no human trigger)"))
-parts.append(phone("tc13-01-teams-alert","Teams alert"))
+parts.append(sl("EWM_Dispatch_Agent &mdash; Idle Driver Alert (driver not moving for 20696 min)"))
+parts.append(img("tc13-01-teams-idle-driver","Teams idle driver alert"))
+parts.append(sl("EWM_Dispatch_Agent &mdash; Batch Opportunity (4 deliveries, same ship-to USCU-CUS09)"))
+parts.append(img("tc13-02-teams-batch-opportunity","Teams batch opportunity alert"))
+parts.append(sl("DelveryTruck_IoT_Gmaps Agent &mdash; Batch Opportunity (9 deliveries, ship-to 17100001)"))
+parts.append(img("tc13-03-teams-iot-batch","Teams IoT batch alert"))
 parts.append("</div></div>")
 
 # Close test cases section
