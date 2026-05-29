@@ -161,7 +161,32 @@ a{color:var(--il);text-decoration:none;}
 .rmp{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--in);margin-bottom:6px;}
 .rmt{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--tx);}
 .rmc ul{padding-left:18px;font-size:13px;color:var(--mu);line-height:1.8;}
-@media print{body{background:#f8f9fc;}.tc,.card,.toc{page-break-inside:avoid;}}
+@media print{
+  @page{size:A4;margin:20mm 18mm 20mm 18mm;}
+  html,body{width:210mm;margin:0 auto;background:#f8f9fc;}
+  .page{max-width:100%;padding:0;margin:0;}
+  .cover{min-height:auto;padding:40px 30px;page-break-after:always;}
+  .toc{page-break-after:always;page-break-inside:avoid;}
+  .tc{page-break-inside:avoid;}
+  .card{page-break-inside:avoid;}
+  .sec{page-break-inside:auto;}
+  .sh{page-break-after:avoid;}
+  .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .agrid,.rgrid,.rmgrid,.gcpg{display:block;}
+  .agrid>*,.pgrid>*,.rgrid>*,.rmgrid>*,.gcpg>*{margin-bottom:12px;page-break-inside:avoid;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);}
+  .tcm{display:grid;grid-template-columns:repeat(3,1fr);}
+  .cmeta{display:grid;grid-template-columns:repeat(2,1fr);}
+  .ss{max-width:100%;height:auto;}
+  .arch{white-space:pre-wrap;word-break:break-all;overflow:visible;}
+  .stbl{page-break-inside:avoid;}
+  a{color:var(--il);}
+  /* Phone frame: strip decorative chrome, show image only */
+  .phone-frame{width:60%;margin:0 auto;background:none;border-radius:0;padding:0;box-shadow:none;page-break-inside:avoid;}
+  .phone-notch,.phone-home{display:none;}
+  .phone-screen{border-radius:8px;overflow:visible;}
+  .phone-screen img{border:1px solid var(--bd);border-radius:8px;}
+}
 """
 
 def section_header(icon, num, title, anchor=""):
@@ -266,6 +291,7 @@ parts.append('''
   <a href="#prob" class="ti"><span class="tnum">01</span>Problem Statement &amp; Business Model<div class="tdots"></div></a>
   <a href="#arch" class="ti"><span class="tnum">02</span>Multi-Agent Architecture<div class="tdots"></div></a>
   <a href="#roles" class="ti"><span class="tnum">03</span>User Roles &amp; Personas<div class="tdots"></div></a>
+  <a href="#deploy" class="ti"><span class="tnum">04</span>Deployment Health Checks<div class="tdots"></div><span class="bp">LIVE</span></a>
  </div>
  <div class="ts"><div class="ts-title">Test Cases</div>
   <a href="#tc01" class="ti"><span class="tnum">TC-01</span>Tenant Signup &amp; IT Admin Login<div class="tdots"></div><span class="bp">PASS</span></a>
@@ -309,10 +335,10 @@ parts.append('''
   <br/><ul><li>SAP OData V4 connector &mdash; live delivery sync, no ETL</li><li>AI Supervisor routes queries to specialist agents</li><li>QR-based driver onboarding &mdash; zero app install</li><li>Real-time GPS tracking via browser geolocation</li><li>Teams/Slack webhook alerts for SLA events</li><li>Multi-tenant SaaS &mdash; any 3PL, any warehouse</li></ul>
  </div>
  <div class="pi"><h4>&#128176; Business Model</h4>
-  <ul><li><strong style="color:#e2e8f0">SaaS subscription</strong> &mdash; per warehouse per month (tiered by volume)</li><li><strong style="color:#e2e8f0">ERP connector fee</strong> &mdash; per integration (SAP, Oracle, Odoo)</li><li><strong style="color:#e2e8f0">Usage-based AI tier</strong> &mdash; agent calls billed above free quota</li><li><strong style="color:#e2e8f0">Enterprise</strong> &mdash; white-label + on-premise for large carriers</li></ul>
+  <ul><li><strong style="color:#111827">SaaS subscription</strong> &mdash; per warehouse/month (tiered by volume)</li><li><strong style="color:#111827">ERP connector fee</strong> &mdash; per integration (SAP, Oracle, Odoo)</li><li><strong style="color:#111827">Usage-based AI tier</strong> &mdash; agent calls billed above free quota</li><li><strong style="color:#111827">Enterprise</strong> &mdash; white-label + on-premise for large carriers</li></ul>
  </div>
  <div class="pi"><h4>&#127757; Social &amp; Economic Impact</h4>
-  <ul><li><strong style="color:#e2e8f0">Formalises gig driver work</strong> &mdash; digital proof of delivery replaces paper POD</li><li><strong style="color:#e2e8f0">Reduces food/pharma spoilage</strong> &mdash; real-time SLA monitoring catches delays early</li><li><strong style="color:#e2e8f0">Democratises SAP access</strong> &mdash; SME logistics at fraction of SAP implementation cost</li><li><strong style="color:#e2e8f0">Carbon footprint</strong> &mdash; optimised routing reduces fuel per delivery</li><li><strong style="color:#e2e8f0">Rural employment</strong> &mdash; QR-only onboarding enables informal workforce participation</li></ul>
+  <ul><li><strong style="color:#111827">Formalises gig driver work</strong> &mdash; digital proof of delivery</li><li><strong style="color:#111827">Reduces food/pharma spoilage</strong> &mdash; real-time SLA monitoring</li><li><strong style="color:#111827">Democratises SAP access</strong> &mdash; SME logistics at fraction of SAP cost</li><li><strong style="color:#111827">Carbon footprint</strong> &mdash; optimised routing reduces fuel per delivery</li><li><strong style="color:#111827">Rural employment</strong> &mdash; QR-only onboarding enables informal workforce</li></ul>
  </div>
 </div>
 </div>''')
@@ -353,8 +379,41 @@ parts.append('''
 </div>
 </div>''')
 
-# ── §4 TEST CASES SECTION HEADER ─────────────────────────────────────
-parts.append(section_header("&#128203;","SECTION 04 &mdash; TEST CASES","Functional Test Scenarios"))
+# ── §4 DEPLOYMENT HEALTH ─────────────────────────────────────────────
+parts.append(section_header("&#9989;","SECTION 04 &mdash; DEPLOYMENT","Live Service Health Checks","deploy"))
+parts.append('''
+<div class="card" style="margin-bottom:20px;">
+ <p style="color:var(--mu);font-size:13px;margin-bottom:20px;">All three NeXera Cloud Run services were verified live immediately before test execution. Health endpoints confirm connectivity to SAP OData, Vertex AI, Teams webhook, and Postgres.</p>
+ <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+  <div style="background:var(--s2);border-radius:10px;padding:14px;">
+   <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:6px;">Frontend</div>
+   <div style="font-size:13px;font-weight:600;color:var(--tx);margin-bottom:4px;">Next.js 14 App Router</div>
+   <div style="font-size:11px;color:var(--mu);word-break:break-all;">frontend-5pcgzahy4q-uc.a.run.app</div>
+   <div style="margin-top:8px;"><span class="bp">&#10003; 200 OK</span></div>
+  </div>
+  <div style="background:var(--s2);border-radius:10px;padding:14px;">
+   <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:6px;">CAP OData Backend</div>
+   <div style="font-size:13px;font-weight:600;color:var(--tx);margin-bottom:4px;">SAP CAP Node.js</div>
+   <div style="font-size:11px;color:var(--mu);word-break:break-all;">cap-srv-1069189829983.us-central1.run.app/health</div>
+   <div style="margin-top:8px;"><span class="bp">&#10003; {"status":"UP"}</span></div>
+  </div>
+  <div style="background:var(--s2);border-radius:10px;padding:14px;">
+   <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:6px;">AI Agents Service</div>
+   <div style="font-size:13px;font-weight:600;color:var(--tx);margin-bottom:4px;">FastAPI + LangGraph</div>
+   <div style="font-size:11px;color:var(--mu);word-break:break-all;">agents-1069189829983.us-central1.run.app/health</div>
+   <div style="margin-top:8px;"><span class="bp">&#10003; status: ok</span></div>
+  </div>
+ </div>
+</div>
+''')
+parts.append(sl("Frontend &mdash; Login page live on GCP Cloud Run"))
+parts.append(img("health-frontend", "Frontend health"))
+parts.append(sl("Agents service &mdash; /health showing all connections ok, all 4 agents ready, MonitorAgent running"))
+parts.append(img("health-agents", "Agents health"))
+parts.append("</div>")
+
+# ── §5 TEST CASES SECTION HEADER ─────────────────────────────────────
+parts.append(section_header("&#128203;","SECTION 05 &mdash; TEST CASES","Functional Test Scenarios"))
 
 # TC-01
 parts.append(tc_open("tc01","TC-01","Tenant Signup &amp; IT Admin Login","pass","&#10003; PASS"))
@@ -385,8 +444,6 @@ parts.append(steps(
 ))
 parts.append(sl("Wizard Step 1 &mdash; connection name and ERP type filled"))
 parts.append(img("tc02-02-wizard-step1-filled","Wizard step 1"))
-parts.append(sl("Wizard Step 2 &mdash; auth method and API key entered"))
-parts.append(img("tc02-03-wizard-step2-auth","Wizard step 2"))
 parts.append(sl("Wizard Step 3 &mdash; connection test result"))
 parts.append(img("tc02-04-wizard-step3-test","Wizard step 3"))
 parts.append(sl("Connections list showing active SAP connection"))
