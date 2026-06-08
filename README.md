@@ -1,8 +1,23 @@
 # NeXera — AI-Powered Logistics Dispatch Platform
 
-**Hackathon:** Google for Startups AI Agents Challenge — Demo: 2026-05-25
+**Hackathon:** Google for Startups AI Agents Challenge
 **Author:** Sriram Rokkam · NeXera-AI-Labs
-**Live demo:** [https://frontend-1069189829983.us-central1.run.app](https://frontend-1069189829983.us-central1.run.app)
+**Live demo:** [https://frontend-5pcgzahy4q-uc.a.run.app/login](https://frontend-5pcgzahy4q-uc.a.run.app/login)
+
+---
+
+## Demo Credentials
+
+The **Acme Logistics** tenant is pre-loaded with 100 SAP deliveries, an active ERP connection, and warehouse WH-1710 (Bangalore).
+
+| Role | Email | Password | Access |
+|---|---|---|---|
+| Admin | `admin@acme.demo` | `Demo@2026` | Full admin + dispatch |
+| Dispatcher | `dispatcher@acme.demo` | `Demo@2026` | Dispatch dashboard + AI chat |
+| Supervisor | `supervisor@acme.demo` | `Demo@2026` | Warehouse supervisor view |
+| Driver | — | — | No login — scan QR from any assigned delivery |
+
+> **Quick start for judges:** Log in as `dispatcher@acme.demo` / `Demo@2026` to go directly to the dispatch dashboard with 100 live SAP deliveries already imported.
 
 NeXera is a multi-tenant SaaS platform for logistics dispatch — connecting ERP systems (SAP S/4HANA today; Odoo / Oracle / SAP ECC planned) to an AI-powered dispatcher dashboard with real-time driver tracking. Both 1PL (own fleet) and 3PL (managed logistics) operators run on the same platform.
 
@@ -10,9 +25,10 @@ NeXera is a multi-tenant SaaS platform for logistics dispatch — connecting ERP
 
 ## Table of Contents
 
-1. [Architecture](#architecture)
-2. [Live Services](#live-services)
-3. [How to Test the Demo](#how-to-test-the-demo)
+1. [Demo Credentials](#demo-credentials)
+2. [Architecture](#architecture)
+3. [Live Services](#live-services)
+4. [How to Test the Demo](#how-to-test-the-demo)
    - [Step 1 — Sign up (first tenant)](#step-1--sign-up-first-tenant)
    - [Step 2 — Onboard a Warehouse](#step-2--onboard-a-warehouse)
    - [Step 3 — Connect SAP ERP](#step-3--connect-sap-erp)
@@ -30,35 +46,7 @@ NeXera is a multi-tenant SaaS platform for logistics dispatch — connecting ERP
 
 ## Architecture
 
-```
-                    ┌──────────────────────────────┐
-                    │  Dispatcher / WH Manager     │
-                    │  (browser, mobile)           │
-                    └──────────────┬───────────────┘
-                                   │ JWT (email+password, invite-only)
-                                   ▼
-        ┌──────────────────────────────────────────────────────┐
-        │  Cloud Run: frontend  (Next.js 14 App Router)        │
-        │  - Tailwind + shadcn/ui, dark slate/indigo theme     │
-        │  - Tenant scoping on every query                     │
-        │  - /api/cap/* and /api/agents/* server proxies       │
-        └────┬───────────────┬────────────────┬────────────────┘
-             │               │                │
-       OData V4         REST /chat      Cloud SQL (pg)
-             │               │                │
-             ▼               ▼                ▼
-    ┌────────────┐    ┌────────────┐   ┌──────────────────────────┐
-    │ Cloud Run: │    │ Cloud Run: │   │ Cloud SQL: nexera-sbx-db │
-    │  cap-srv   │    │   agents   │   │  (db-f1-micro shared)    │
-    │ CAP Node.js│    │ FastAPI +  │   │  database: dispatch      │
-    │ OData V4   │◄───┤ LangGraph  │   │  - users, tenants,       │
-    └─────┬──────┘    └─────┬──────┘   │    invites, warehouses   │
-          │                 │           │  - DriverAssignment,     │
-          │                 │           │    LocationUpdate        │
-          ▼                 ▼           └──────────────────────────┘
-    SAP S/4HANA       Vertex AI
-    Sandbox OData     Gemini 2.5 Flash → Teams webhook (alerts)
-```
+![NeXera Architecture](docs/architecture/arch-diagram.png)
 
 ---
 
@@ -66,9 +54,9 @@ NeXera is a multi-tenant SaaS platform for logistics dispatch — connecting ERP
 
 | Service | URL | Purpose |
 |---|---|---|
-| **frontend** | `https://frontend-1069189829983.us-central1.run.app` | Next.js dashboard, tracking page |
+| **frontend** | `https://frontend-5pcgzahy4q-uc.a.run.app` | Next.js dashboard, tracking page |
 | **cap-srv** | `https://cap-srv-1069189829983.us-central1.run.app` | OData V4 + SAP integration |
-| **agents** | `https://agents-1069189829983.us-central1.run.app` | LangGraph AI agents |
+| **agents** | `https://agents-5pcgzahy4q-uc.a.run.app` | LangGraph AI agents |
 
 All in GCP project `agentic-dispatch`, region `us-central1`.
 
