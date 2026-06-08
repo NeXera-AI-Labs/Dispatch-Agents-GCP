@@ -46,7 +46,7 @@ NeXera is a multi-tenant SaaS platform for logistics dispatch — connecting ERP
 
 ## Architecture
 
-![NeXera Architecture](docs/architecture/arch-diagram.png)
+![NeXera Architecture](submission/arch-diagram.png)
 
 ---
 
